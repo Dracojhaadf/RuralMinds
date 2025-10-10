@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Interaction Form</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; color: #333; padding: 20px; }
+        .form-container { max-width: 600px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }
+        h1 { color: #667eea; text-align: center; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568; }
+        input[type="text"], input[type="number"], select {
+            width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus { border-color: #764ba2; outline: none; }
+        .radio-group { display: flex; flex-direction: column; gap: 10px; }
+        .radio-item { display: flex; align-items: center; background: #f7fafc; padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid #e2e8f0; }
+        .radio-item input[type="radio"] { margin-right: 10px; }
+        .submit-btn {
+            display: block; width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; border-radius: 25px; font-size: 1.1rem; cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 10px rgba(102, 126, 234, 0.4); }
+        .status-message { margin-top: 20px; padding: 15px; border-radius: 8px; text-align: center; display: none; }
+        .status-success { background-color: #c6f6d5; color: #22543d; }
+        .status-error { background-color: #fed7d7; color: #742a2a; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>Student Connection Form 🤝</h1>
+        <p style="text-align: center; color: #718096; margin-bottom: 25px;">Find and connect with peers based on interests!</p>
+        <form id="interactionForm">
+            <div class="form-group">
+                <label for="name"><i class="fas fa-user"></i> Full Name *</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="age"><i class="fas fa-birthday-cake"></i> Age (Optional)</label>
+                <input type="number" id="age" name="age" min="16" max="99">
+            </div>
+            <div class="form-group">
+                <label for="major"><i class="fas fa-book"></i> Major / Field of Study</label>
+                <input type="text" id="major" name="major">
+            </div>
+            <div class="form-group">
+                <label for="favoriteSubject"><i class="fas fa-lightbulb"></i> Favorite Subject or Current Topic</label>
+                <input type="text" id="favoriteSubject" name="favoriteSubject" placeholder="e.g., Quantum Physics, Python Programming">
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-users"></i> Preferred Interaction Method *</label>
+                <div class="radio-group">
+                    <label class="radio-item">
+                        <input type="radio" name="preferredMethod" value="Study Groups" required>
+                        Study Groups 🤓
+                    </label>
+                    <label class="radio-item">
+                        <input type="radio" name="preferredMethod" value="Casual Social Events" required>
+                        Casual Social Events 🥳
+                    </label>
+                    <label class="radio-item">
+                        <input type="radio" name="preferredMethod" value="Online Discussion" required>
+                        Online Discussion Forums 🌐
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Submit Profile</button>
+        </form>
+        <div id="statusMessage" class="status-message"></div>
+    </div>
+
+    <script>
+        document.getElementById('interactionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const form = e.target;
+            const data = {
+                name: form.name.value,
+                age: form.age.value,
+                major: form.major.value,
+                favoriteSubject: form.favoriteSubject.value,
+                preferredMethod: form.preferredMethod.value 
+            };
+            
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status-message';
+            statusDiv.textContent = 'Submitting...';
+
+            fetch('/submit_interaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    statusDiv.className = 'status-message status-success';
+                    statusDiv.textContent = data.message;
+                    form.reset(); // Clear form on success
+                } else {
+                    statusDiv.className = 'status-message status-error';
+                    statusDiv.textContent = data.message;
+                }
+            })
+            .catch(error => {
+                console.error('Submission Error:', error);
+                statusDiv.className = 'status-message status-error';
+                statusDiv.textContent = 'An unknown network error occurred.';
+            });
+        });
+    </script>
+</body>
+</html>

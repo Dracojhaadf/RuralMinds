@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Interaction List</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; color: #333; padding: 20px; }
+        .container { max-width: 900px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }
+        h1 { color: #667eea; text-align: center; margin-bottom: 30px; }
+        .student-card {
+            background-color: #f7fafc; border: 1px solid #e2e8f0; padding: 15px; margin-bottom: 15px;
+            border-radius: 8px; display: flex; flex-direction: column; gap: 5px;
+        }
+        .student-card strong { color: #4a5568; }
+        .back-link { display: block; text-align: center; margin-top: 20px; color: #764ba2; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-list-alt"></i> Submitted Student Profiles</h1>
+        {% if students %}
+            {% for student in students %}
+                <div class="student-card">
+                    <strong>Name:</strong> {{ student.name }}<br>
+                    <strong>Age:</strong> {{ student.age }}<br>
+                    <strong>Major:</strong> {{ student.major }}<br>
+                    <strong>Favorite Topic:</strong> {{ student.favorite_subject }}<br>
+                    <strong>Preferred Method:</strong> <span style="font-weight: bold; color: #d53f8c;">{{ student.interaction_preference }}</span>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #718096;">No student profiles have been submitted yet.</p>
+        {% endif %}
+        <a href="/student_form" class="back-link"><i class="fas fa-arrow-left"></i> Submit another form</a>
+    </div>
+</body>
+</html>
