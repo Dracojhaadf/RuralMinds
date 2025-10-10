@@ -1,0 +1,13 @@
+streamlit
+sentence-transformers
+faiss-cpu
+PyMuPDF
+transformers
+torch
+numpy
+pandas
+nltk
+openai
+chromadb
+accelerate
+bitsandbytes
