@@ -1,14 +1,24 @@
-streamlit
-sentence-transformers
-faiss-cpu
-PyMuPDF
-transformers
-torch
-numpy
-pandas
-nltk
-openai
-chromadb
-accelerate
-bitsandbytes
-chromadb
+# Core dependencies
+streamlit>=1.28.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+transformers>=4.30.0
+torch>=2.0.0
+nltk>=3.8.0
+
+# PDF processing
+PyMuPDF>=1.23.0
+
+# Video transcription (NEW)
+openai-whisper>=20231117
+ffmpeg-python>=0.2.0
+
+# Additional utilities
+numpy>=1.24.0
+pathlib>=1.0.1
+
+# Optional: For better performance
+accelerate>=0.20.0
+
+# Translation models will be auto-downloaded by transformers
+# Supported languages: Spanish, French, German, Hindi, Chinese, Arabic, Portuguese, Russian, Japanese
