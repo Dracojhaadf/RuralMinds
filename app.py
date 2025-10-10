@@ -28,15 +28,17 @@ from pathlib import Path
 
 # --- PAGE CONFIGURATION (MUST BE FIRST) ---
 st.set_page_config(
-    page_title="RAG Teaching Assistant", 
+    page_title="NFS", 
     layout="wide",
-    page_icon="🧠",
+    page_icon="📚",
     initial_sidebar_state="expanded"
 )
 
 # --- CONFIGURATION ---
 SOURCE_FOLDER = os.getenv("SOURCE_FOLDER", "source_folder")
 DB_PATH = "chroma_db"
+ADMIN_USERNAME = "administrator"
+ADMIN_PASSWORD = "admin"
 
 # --- SESSION STATE INITIALIZATION ---
 if 'authenticated' not in st.session_state:
@@ -45,12 +47,21 @@ if 'user_data' not in st.session_state:
     st.session_state.user_data = None
 if 'show_signup' not in st.session_state:
     st.session_state.show_signup = False
+if 'is_admin_login' not in st.session_state:
+    st.session_state.is_admin_login = False
+if 'show_admin_login' not in st.session_state:
+    st.session_state.show_admin_login = False
 
-# --- AUTHENTICATION PAGE ---
+# --- ADMIN AUTHENTICATION ---
+def authenticate_admin(username: str, password: str) -> bool:
+    """Verify admin credentials."""
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+# --- USER AUTHENTICATION PAGE ---
 def show_auth_page():
-    """Display the authentication page."""
-    st.markdown("<h1 style='text-align: center;'>🧠 RAG Teaching Assistant</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>AI-Powered Document Q&A System</h3>", unsafe_allow_html=True)
+    """Display authentication page."""
+    st.markdown("<h1 style='text-align: center;'>📚 NFS</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>Document Management & Q&A System</h3>", unsafe_allow_html=True)
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -76,7 +87,8 @@ def show_auth_page():
                         if success:
                             st.session_state.authenticated = True
                             st.session_state.user_data = user_data
-                            st.success(f"✅ Welcome back, {user_data['name']}!")
+                            st.session_state.is_admin_login = False
+                            st.success(f"✅ Welcome, {user_data['name']}!")
                             st.rerun()
                         else:
                             st.error("❌ Invalid username or password")
@@ -87,10 +99,15 @@ def show_auth_page():
                     st.session_state.show_signup = True
                     st.rerun()
             
-            st.info("💡 **Default Login:** Username: `admin` | Password: `admin123`")
+            # Admin login link at the bottom
+            st.markdown("---")
+            st.caption("Admin access?")
+            if st.button("🔑 Admin Login", use_container_width=True):
+                st.session_state.show_admin_login = True
+                st.rerun()
         
         else:
-            # SIGNUP FORM
+            # SIGNUP FORM (Students only)
             st.subheader("📝 Create New Account")
             
             with st.form("signup_form"):
@@ -99,7 +116,6 @@ def show_auth_page():
                 confirm_password = st.text_input("Confirm Password", type="password", placeholder="Re-enter your password")
                 full_name = st.text_input("Full Name", placeholder="Your full name")
                 email = st.text_input("Email", placeholder="your.email@example.com")
-                role = st.selectbox("I am a:", ["student", "teacher"])
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -113,11 +129,12 @@ def show_auth_page():
                     elif new_password != confirm_password:
                         st.error("❌ Passwords do not match")
                     else:
-                        success, message = create_user(new_username, new_password, role, full_name, email)
+                        success, message = create_user(new_username, new_password, "student", full_name, email)
                         if success:
                             st.success(f"✅ {message}")
                             st.info("👉 You can now login with your credentials")
                             st.session_state.show_signup = False
+                            st.rerun()
                         else:
                             st.error(f"❌ {message}")
                 
@@ -125,14 +142,58 @@ def show_auth_page():
                     st.session_state.show_signup = False
                     st.rerun()
 
+# --- ADMIN LOGIN PAGE ---
+def show_admin_login():
+    """Display admin login page."""
+    st.markdown("<h1 style='text-align: center;'>📚 NFS</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>Admin Panel</h3>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.subheader("🔑 Admin Login")
+        
+        with st.form("admin_login_form"):
+            username = st.text_input("Admin Username", placeholder="Enter admin username")
+            password = st.text_input("Admin Password", type="password", placeholder="Enter admin password")
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                login_button = st.form_submit_button("🔓 Login", type="primary", use_container_width=True)
+            with col_b:
+                back_button = st.form_submit_button("⬅️ Back", use_container_width=True)
+            
+            if login_button:
+                if authenticate_admin(username, password):
+                    st.session_state.authenticated = True
+                    st.session_state.is_admin_login = True
+                    st.session_state.user_data = {
+                        'username': 'administrator',
+                        'role': 'admin',
+                        'name': 'Administrator',
+                        'email': 'admin@nfs.local'
+                    }
+                    st.success("✅ Welcome, Admin!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid admin credentials")
+            
+            if back_button:
+                st.session_state.show_admin_login = False
+                st.rerun()
+
 # --- CHECK AUTHENTICATION ---
 if not st.session_state.authenticated:
-    show_auth_page()
+    if st.session_state.show_admin_login:
+        show_admin_login()
+    else:
+        show_auth_page()
     st.stop()
 
 # --- ONE-TIME DATABASE INITIALIZATION ---
 def initialize_database():
-    """Initialize database from source folder if not already done."""
+    """Initialize database from source folder."""
     try:
         client = chromadb.PersistentClient(path=DB_PATH)
         
@@ -176,15 +237,122 @@ def initialize_database():
         st.error(f"Initialization error: {str(e)}")
         return False
 
-# Initialize database once per session after authentication
 if 'db_initialized' not in st.session_state:
     with st.spinner("Initializing database..."):
         st.session_state.db_initialized = initialize_database()
 
-# --- HEADER WITH USER INFO ---
+is_admin = st.session_state.user_data['role'] == 'admin'
+is_teacher = st.session_state.user_data['role'] == 'teacher'
+
+# --- ADMIN PANEL ---
+if is_admin:
+    st.markdown("<h1>📚 NFS - Admin Panel</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Logout button in header
+    col1, col2 = st.columns([0.9, 0.1])
+    with col2:
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.user_data = None
+            st.session_state.is_admin_login = False
+            st.rerun()
+    
+    st.write(f"Welcome, **{st.session_state.user_data['name']}**")
+    st.markdown("---")
+    
+    # Admin tabs
+    admin_tabs = st.tabs(["👥 Users", "👨‍🏫 Teachers", "➕ Add Teacher"])
+    
+    # ===== USERS TAB =====
+    with admin_tabs[0]:
+        st.subheader("All Users")
+        all_users = get_all_users()
+        
+        if all_users:
+            st.metric("Total Users", len(all_users))
+            st.markdown("---")
+            
+            for user in all_users:
+                col1, col2 = st.columns([0.8, 0.2])
+                
+                with col1:
+                    st.markdown(f"**{user['name']}** (@{user['username']})")
+                    st.caption(f"Role: {user['role'].title()} | Email: {user['email']}")
+                
+                with col2:
+                    if user['username'] != 'administrator':
+                        if st.button("🗑️ Delete", key=f"del_user_{user['username']}", use_container_width=True):
+                            success, message = delete_user(user['username'])
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+        else:
+            st.info("No users found")
+    
+    # ===== TEACHERS TAB =====
+    with admin_tabs[1]:
+        st.subheader("Teachers List")
+        all_users = get_all_users()
+        teachers = [u for u in all_users if u['role'] == 'teacher']
+        
+        if teachers:
+            st.metric("Total Teachers", len(teachers))
+            st.markdown("---")
+            
+            for teacher in teachers:
+                col1, col2 = st.columns([0.8, 0.2])
+                
+                with col1:
+                    st.markdown(f"**{teacher['name']}** (@{teacher['username']})")
+                    st.caption(f"Email: {teacher['email']}")
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"del_teacher_{teacher['username']}", use_container_width=True):
+                        success, message = delete_user(teacher['username'])
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+        else:
+            st.info("No teachers created yet")
+    
+    # ===== ADD TEACHER TAB =====
+    with admin_tabs[2]:
+        st.subheader("Create New Teacher")
+        
+        with st.form("add_teacher_form"):
+            teacher_username = st.text_input("Username (min 3)", placeholder="teacher_username")
+            teacher_password = st.text_input("Password (min 6)", type="password", placeholder="temporary_password")
+            teacher_name = st.text_input("Full Name", placeholder="Teacher Name")
+            teacher_email = st.text_input("Email", placeholder="teacher@nfs.local")
+            
+            if st.form_submit_button("✅ Create Teacher Account", type="primary", use_container_width=True):
+                if all([teacher_username, teacher_password, teacher_name, teacher_email]):
+                    success, message = create_user(
+                        teacher_username, 
+                        teacher_password, 
+                        "teacher", 
+                        teacher_name, 
+                        teacher_email
+                    )
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
+                else:
+                    st.error("❌ Please fill all fields")
+    
+    st.stop()
+
+# --- HEADER WITH USER INFO (Teachers and Students) ---
 col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
-    st.title("🧠 RAG Teaching Assistant")
+    st.title("📚 NFS")
 with col2:
     st.write(f"**👤 {st.session_state.user_data['name']}**")
     st.caption(f"🎭 {st.session_state.user_data['role'].title()}")
@@ -192,27 +360,23 @@ with col3:
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.authenticated = False
         st.session_state.user_data = None
+        st.session_state.is_admin_login = False
         st.rerun()
 
-st.markdown("💬 Upload documents and videos, then ask questions using AI-powered retrieval.")
+st.markdown("💬 Manage documents, videos, and ask questions using AI-powered retrieval.")
 st.markdown("---")
 
-# Check if user is teacher for admin features
-is_teacher = st.session_state.user_data['role'] == 'teacher'
-
-# --- SIDEBAR ---
+# --- SIDEBAR (Teachers and Students) ---
 with st.sidebar:
     st.header("📚 Content Management")
     
-    # Create tabs based on role
     if is_teacher:
-        tabs = st.tabs(["📄 PDFs", "🎥 Videos", "⚙️ Manage", "👥 Users"])
-        upload_tab, video_tab, manage_tab, users_tab = tabs
+        tabs = st.tabs(["📄 PDFs", "🎥 Videos", "⚙️ Manage"])
+        upload_tab, video_tab, manage_tab = tabs
     else:
         tabs = st.tabs(["📚 Browse", "🎥 Videos"])
         upload_tab, video_tab = tabs
         manage_tab = None
-        users_tab = None
     
     # ===== PDF UPLOAD TAB =====
     with upload_tab:
@@ -222,7 +386,7 @@ with st.sidebar:
             uploaded_pdf = st.file_uploader(
                 "Choose a PDF file", 
                 type="pdf", 
-                help="Upload a PDF document to add to the knowledge base",
+                help="Upload a PDF document",
                 key="pdf_uploader"
             )
             
@@ -269,7 +433,6 @@ with st.sidebar:
             
             st.markdown("---")
         
-        # VIDEO VIEWER
         st.subheader("🎬 Video Library")
         available_videos = get_available_videos()
         
@@ -299,7 +462,6 @@ with st.sidebar:
                         st.video(video_bytes)
                     
                     if matching_video['has_captions'] and matching_video['caption_data']:
-                        caption_text = matching_video['caption_data'].get('full_text', '')
                         word_count = matching_video['caption_data'].get('word_count', 0)
                         st.success(f"✅ {word_count} words")
                     else:
@@ -311,6 +473,7 @@ with st.sidebar:
             st.markdown("---")
             st.subheader("📝 Add Captions")
             
+            video_options = [v['name'] for v in available_videos]
             selected_video = st.selectbox(
                 "Video:",
                 options=video_options,
@@ -376,30 +539,8 @@ with st.sidebar:
                             st.rerun()
                         else:
                             st.error(message)
-    
-    # ===== USERS TAB (Teachers only) =====
-    if users_tab is not None:
-        with users_tab:
-            st.subheader("👥 User Management")
-            
-            all_users = get_all_users()
-            st.metric("Total Users", len(all_users))
-            
-            for user in all_users:
-                with st.expander(f"{user['name']} (@{user['username']})"):
-                    st.text(f"Role: {user['role'].title()}")
-                    st.text(f"Email: {user['email']}")
-                    
-                    if user['username'] != 'admin':
-                        if st.button(f"Delete", key=f"del_{user['username']}"):
-                            success, message = delete_user(user['username'])
-                            if success:
-                                st.success(message)
-                                st.rerun()
-                            else:
-                                st.error(message)
 
-# --- MAIN CONTENT AREA ---
+# --- MAIN CONTENT AREA (Teachers and Students) ---
 available_docs = get_available_documents()
 
 if available_docs:
@@ -426,7 +567,6 @@ if available_docs:
         if stats:
             st.metric("Chunks", stats['chunk_count'])
     
-    # VIDEO PLAYER for video captions
     if stats and stats['type'] == 'video_caption':
         st.markdown("---")
         videos = get_available_videos()
@@ -437,35 +577,30 @@ if available_docs:
                 video_bytes = video_file.read()
                 st.video(video_bytes)
 
-# --- CHAT INTERFACE ---
+# --- CHAT INTERFACE (Teachers and Students) ---
 if st.session_state.get('selected_doc'):
     st.markdown("---")
     st.subheader(f"💬 Chat: {st.session_state.selected_doc}")
     
-    # Initialize chat history
     if "messages" not in st.session_state or st.session_state.get("current_doc") != st.session_state.selected_doc:
         st.session_state.messages = []
         st.session_state.current_doc = st.session_state.selected_doc
         st.session_state.messages.append({
             "role": "assistant",
-            "content": f"👋 Hi {st.session_state.user_data['name']}! Ask me anything about **{st.session_state.selected_doc}**."
+            "content": f"Hi {st.session_state.user_data['name']}! Ask me anything about **{st.session_state.selected_doc}**."
         })
     
-    # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
     
-    # Chat input
     if query := st.chat_input(f"Ask about {st.session_state.selected_doc}..."):
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": query})
         with st.chat_message("user"):
             st.markdown(query)
         
-        # Generate response
         with st.chat_message("assistant"):
-            with st.spinner("🤔 Thinking..."):
+            with st.spinner("Thinking..."):
                 try:
                     answer, retrieved_chunks = query_saved_document(
                         st.session_state.selected_doc, 
@@ -474,7 +609,6 @@ if st.session_state.get('selected_doc'):
                     
                     st.markdown(answer)
                     
-                    # Show source context
                     with st.expander("📄 View Source Context"):
                         for i, chunk in enumerate(retrieved_chunks, 1):
                             st.markdown(f"**Chunk {i}:**")
@@ -483,28 +617,27 @@ if st.session_state.get('selected_doc'):
                                 st.markdown("---")
                 
                 except Exception as e:
-                    answer = f"❌ Error: {str(e)}"
+                    answer = f"Error: {str(e)}"
                     st.error(answer)
         
-        # Add to history
         st.session_state.messages.append({"role": "assistant", "content": answer})
 
 else:
-    st.info("👈 Please select or upload a document to start chatting")
+    st.info("Select or upload a document to start chatting")
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("""
-        ### 📄 For PDFs
-        1. Upload a PDF (teachers)
-        2. Select it from dropdown
+        ### 📄 PDFs
+        1. Upload a PDF
+        2. Select it
         3. Ask questions!
         """)
     
     with col2:
         st.markdown("""
-        ### 🎥 For Videos
+        ### 🎥 Videos
         1. Upload video + captions
         2. Index for search
         3. Query the content!
