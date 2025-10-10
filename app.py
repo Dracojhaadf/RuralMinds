@@ -1,5 +1,48 @@
 import streamlit as st
 from backend import process_and_save_pdf, query_saved_document, get_available_documents
+import os
+import chromadb
+
+# --- 0. ONE-TIME DATABASE INITIALIZATION ---
+# This block runs once per session to ensure the database is fresh and reflects the source_folder.
+SOURCE_FOLDER = r"C:\oi\NFS---HackQuest-25\source_folder"
+
+# Use a session state flag to ensure this logic runs only once per session
+if 'db_initialized' not in st.session_state:
+    with st.spinner(f"Initializing database from source folder..."):
+        # Clear all existing collections from the database to ensure a fresh start
+        client = chromadb.PersistentClient(path="chroma_db")
+        for collection in client.list_collections():
+            client.delete_collection(name=collection.name)
+        
+        # Ingest all PDF files from the specified source folder
+        if os.path.exists(SOURCE_FOLDER):
+            pdf_files = [f for f in os.listdir(SOURCE_FOLDER) if f.endswith(".pdf")]
+            
+            # A simple helper class to mimic Streamlit's UploadedFile object structure
+            # so we can reuse the existing 'process_and_save_pdf' function
+            class LocalFile:
+                def __init__(self, path):
+                    self.path = path
+                    self.name = os.path.basename(path)
+                
+                def read(self):
+                    with open(self.path, "rb") as f:
+                        return f.read()
+
+            # Process each PDF found in the folder
+            for pdf_file in pdf_files:
+                file_path = os.path.join(SOURCE_FOLDER, pdf_file)
+                local_file_obj = LocalFile(file_path)
+                process_and_save_pdf(local_file_obj)
+        else:
+            # Display a warning if the source folder doesn't exist
+            st.warning(f"Source folder not found at: {SOURCE_FOLDER}")
+
+    # Set the flag to prevent this block from running again in this session
+    st.session_state.db_initialized = True
+    # Rerun the script to ensure the UI updates with the new document list
+    st.rerun()
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RAG Teaching Assistant", layout="wide")
@@ -77,4 +120,5 @@ if st.session_state.selected_doc:
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": answer})
 else:
-    st.info("Please upload a PDF document using the sidebar to start the chat.")
+    st.info("Please run the 'ingest.py' script or upload a PDF to start the chat.")
+
