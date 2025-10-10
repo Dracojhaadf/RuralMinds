@@ -1,5 +1,5 @@
 import streamlit as st
-from backend.rag_backend import get_answer
+from backend import get_answer
 
 st.set_page_config(page_title="RAG Teaching Assistant", layout="wide")
 st.title("🧠 RAG Teaching Assistant")
