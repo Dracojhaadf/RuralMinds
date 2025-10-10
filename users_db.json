@@ -1,0 +1,32 @@
+{
+  "admin": {
+    "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role": "teacher",
+    "name": "Admin",
+    "email": "admin@example.com"
+  },
+  "Ishan": {
+    "password": "0c488d4fdd2609deadf0fe4dfe06e3b505682467e72f5a0923d19302a11ff2c6",
+    "role": "teacher",
+    "name": "sdd",
+    "email": "sdd"
+  },
+  "Ishans": {
+    "password": "7f7bc98436a3a349162bf0d1d59d8d4f7464ad9cb8de24b7b1268fe42d1e39bf",
+    "role": "student",
+    "name": "nigg",
+    "email": "ss"
+  },
+  "Ishanss": {
+    "password": "571f22513734cf36ed68d9c29365ba034522bee4cf12c758906d4fe83ac5b3c1",
+    "role": "student",
+    "name": "nigg",
+    "email": "ss"
+  },
+  "aaa": {
+    "password": "ed02457b5c41d964dbd2f2a609d63fe1bb7528dbe55e1abf5b52c249cd735797",
+    "role": "student",
+    "name": "aaa",
+    "email": "aaaa"
+  }
+}

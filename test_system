@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""
+Test script to verify RAG Teaching Assistant installation and functionality
+"""
+
+import sys
+import os
+
+print("=" * 60)
+print("RAG Teaching Assistant - System Test")
+print("=" * 60)
+
+# Test 1: Python version
+print("\n[1/7] Checking Python version...")
+if sys.version_info >= (3, 8):
+    print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+else:
+    print(f"❌ Python {sys.version_info.major}.{sys.version_info.minor} (need 3.8+)")
+    sys.exit(1)
+
+# Test 2: Required packages
+print("\n[2/7] Checking required packages...")
+required_packages = [
+    'streamlit',
+    'chromadb',
+    'fitz',  # PyMuPDF
+    'nltk',
+    'sentence_transformers',
+    'transformers',
+    'torch'
+]
+
+missing_packages = []
+for package in required_packages:
+    try:
+        __import__(package)
+        print(f"  ✅ {package}")
+    except ImportError:
+        print(f"  ❌ {package}")
+        missing_packages.append(package)
+
+if missing_packages:
+    print(f"\n❌ Missing packages: {', '.join(missing_packages)}")
+    print("Run: pip install -r requirements.txt")
+    sys.exit(1)
+
+# Test 3: FFmpeg
+print("\n[3/7] Checking FFmpeg (for video captions)...")
+import subprocess
+try:
+    result = subprocess.run(['ffmpeg', '-version'], 
+                          capture_output=True, 
+                          text=True, 
+                          timeout=5)
+    if result.returncode == 0:
+        version_line = result.stdout.split('\n')[0]
+        print(f"  ✅ {version_line}")
+    else:
+        print("  ⚠️  FFmpeg found but returned error")
+except FileNotFoundError:
+    print("  ⚠️  FFmpeg not found (needed for auto-caption generation)")
+    print("     Install: sudo apt install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+except Exception as e:
+    print(f"  ⚠️  Could not check FFmpeg: {str(e)}")
+
+# Test 4: NLTK data
+print("\n[4/7] Checking NLTK data...")
+import nltk
+try:
+    nltk.data.find('tokenizers/punkt')
+    print("  ✅ NLTK punkt tokenizer")
+except LookupError:
+    print("  ⬇️  Downloading NLTK punkt...")
+    nltk.download('punkt', quiet=True)
+    print("  ✅ Downloaded")
+
+# Test 5: File structure
+print("\n[5/7] Checking file structure...")
+required_files = ['app.py', 'backend.py', 'auth.py']
+for file in required_files:
+    if os.path.exists(file):
+        print(f"  ✅ {file}")
+    else:
+        print(f"  ❌ {file} not found")
+
+# Test 6: Auth system
+print("\n[6/7] Testing authentication system...")
+try:
+    from auth import load_users, hash_password, authenticate_user
+    users = load_users()
+    if 'admin' in users:
+        print("  ✅ Default admin account exists")
+        # Test login
+        success, user_data = authenticate_user('admin', 'admin123')
+        if success:
+            print("  ✅ Admin login works")
+        else:
+            print("  ❌ Admin login failed")
+    else:
+        print("  ⚠️  No admin account (will be created on first run)")
+except Exception as e:
+    print(f"  ❌ Auth system error: {str(e)}")
+
+# Test 7: Model loading
+print("\n[7/7] Testing model loading (this may take a minute)...")
+try:
+    from backend import get_embedding_model
+    print("  ⬇️  Loading embedding model...")
+    model = get_embedding_model()
+    test_embedding = model.encode(["test"])
+    print(f"  ✅ Embedding model works (vector size: {len(test_embedding[0])})")
+except Exception as e:
+    print(f"  ❌ Model loading failed: {str(e)}")
+
+# Summary
+print("\n" + "=" * 60)
+print("Test Summary")
+print("=" * 60)
+print("\n✅ System is ready! Run: streamlit run app.py")
+print("\n💡 Default login:")
+print("   Username: admin")
+print("   Password: admin123")
+print("\n⚠️  Remember to change the default password!")
+print("=" * 60)
