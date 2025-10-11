@@ -1,7 +1,22 @@
 NFS: AI-Powered Document Q&A and Collaboration Platform
+<p align="center">
+<img src="https://www.google.com/search?q=https://placehold.co/800x400/667eea/ffffff%3Ftext%3DNFS%2520Dashboard%26font%3Dsans" alt="NFS Application Dashboard">
+</p>
+
 NFS (Next-Generation File System) is a comprehensive web application built with Streamlit that transforms static documents into an interactive learning experience. It leverages a Retrieval-Augmented Generation (RAG) model to allow users to "chat" with their PDF documents, asking questions and receiving context-aware answers.
 
 The platform also features a full-fledged community forum, creating a collaborative space where students can ask course-related questions and teachers can provide answers, fostering an interactive educational environment.
+
+📋 Table of Contents
+✨ Core Features
+
+🛠️ Technology Stack
+
+🚀 Getting Started
+
+📖 How to Use
+
+📂 Project File Structure
 
 ✨ Core Features
 🤖 AI-Powered Document Q&A: Upload PDF documents and ask complex questions. The system retrieves relevant text chunks and provides concise, accurate answers based on the document's content.
@@ -73,10 +88,7 @@ Install the required packages:
 
 pip install -r requirements.txt
 
-Download NLTK Data: The application will automatically attempt to download the punkt tokenizer on first run. You can also do it manually:
-
-import nltk
-nltk.download('punkt')
+Download NLTK Data: The application will automatically attempt to download the punkt tokenizer on the first run.
 
 3. Configuration
 The default administrator credentials are set in app.py:
@@ -85,10 +97,10 @@ Username: administrator
 
 Password: admin
 
-It is recommended to change these for any production-like environment.
+It is highly recommended to change these for any production-like environment.
 
 4. Running the Application
-Once the installation is complete, you can start the Streamlit application with the following command:
+Once the installation is complete, start the Streamlit application with the following command:
 
 streamlit run app.py
 
@@ -107,8 +119,6 @@ Log in with your teacher credentials.
 
 In the sidebar, use the file uploader to add new PDF documents to the system.
 
-Navigate to the Document Q&A tab to select and delete documents.
-
 Navigate to the Forum tab to view student questions. Click "View" to see a discussion and post your reply. A notification will appear in the sidebar if questions are unanswered.
 
 🧑‍🎓 Student
@@ -116,7 +126,7 @@ Create a new account or log in.
 
 In the Document Q&A tab, select a document from the dropdown menu and use the chat interface to ask questions about it.
 
-In the Forum tab, you can ask a new question using the "Ask a New Question" expander or view existing discussions.
+In the Forum tab, ask a new question or view existing discussions.
 
 📂 Project File Structure
 This project is composed of a main Streamlit application and several supporting components.
@@ -125,11 +135,11 @@ nfs-rag-forum/
 │
 ├─── 🚀 MAIN STREAMLIT APPLICATION
 │    ├── 📄 app.py            # Main Streamlit UI and application logic
-│    ├── ⚙️ backend.py         # Core logic for RAG, PDF processing, and forum data
-│    └── 🔑 auth.py            # User authentication and SQLite database management
+│    ├── ⚙️ backend.py         # Core logic for RAG, PDF processing, etc.
+│    └── 🔑 auth.py            # User authentication & SQLite database management
 │
 ├─── 📦 DATA & DATABASES
-│    ├── 🗃️ users.db           # SQLite database for users and forum posts/replies
+│    ├── 🗃️ users.db           # SQLite database for users and forum
 │    ├── 📁 chroma_db/         # Directory for the ChromaDB vector database
 │    ├── 📁 source_folder/    # Place PDFs here for bulk ingestion
 │    ├── 📁 static/            # For storing static assets like videos
@@ -137,9 +147,9 @@ nfs-rag-forum/
 │    └── 📁 captions/          # Stores generated captions for videos
 │
 ├─── 🛠️ SUPPORTING SCRIPTS & COMPONENTS
-│    ├── 📜 ingest.py          # Standalone script to bulk-process PDFs from `source_folder`
-│    ├── 🌐 form.py            # A separate Flask application for student interaction forms
-│    ├── 📄 form-frontend.html # HTML templates for the Flask form application
+│    ├── 📜 ingest.py          # Standalone script to bulk-process PDFs
+│    ├── 🌐 form.py            # A separate Flask app for student forms
+│    ├── 📄 form-frontend.html # HTML templates for the Flask app
 │    ├── 📄 data-view-frontend.html
 │    └── 📄 frontend.html
 │
@@ -147,7 +157,7 @@ nfs-rag-forum/
 │    ├── 📁 test/
 │    └── 📁 test_system/
 │
-├───  legacy (Likely replaced by SQLite DB)
+├─── 🗑️ LEGACY (Replaced by SQLite DB)
 │    ├── 📄 forum_db.json
 │    ├── 📄 student_interactions.json
 │    └── 📄 users_db.json
