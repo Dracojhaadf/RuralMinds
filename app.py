@@ -443,16 +443,14 @@ with tab1:
         if 'selected_doc' not in st.session_state:
             st.session_state.selected_doc = docs[0]
         
-        col_x, col_y, col_z = st.columns([2, 1, 1])
+        col_x, col_y= st.columns([3, 1])
         with col_x:
             sel = st.selectbox("📖 Select Document:", docs, key="selected_doc")
         with col_y:
             stats = get_document_stats(sel)
             if stats:
                 st.metric("Type", stats['type'])
-        '''with col_z:
-            if stats:
-                st.metric("Chunks", stats['chunk_count'])'''
+        
         
         st.markdown("---")
         
