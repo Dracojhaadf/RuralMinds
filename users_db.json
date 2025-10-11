@@ -16,5 +16,11 @@
     "role": "student",
     "name": "Ishan George Mathews",
     "email": "ishangeorgemathews2006@gmail.com"
+  },
+  "rehanreji": {
+    "password": "49fe5950e34c5605137bbcf1a2a7f85deccc271749883f9137c7cf986a984005",
+    "role": "teacher",
+    "name": "REHAN REJI",
+    "email": "rehan@gmail.com"
   }
 }

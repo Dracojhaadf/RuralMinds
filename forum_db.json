@@ -21,7 +21,21 @@
           "is_answer": true
         }
       ]
+    },
+    {
+      "id": 2,
+      "username": "rehanreji",
+      "user_role": "teacher",
+      "title": "Why do you think India is a good place to live in?",
+      "content": "describe the same",
+      "category": "General",
+      "related_document": null,
+      "created_at": "2025-10-11T09:39:18.132710",
+      "updated_at": "2025-10-11T09:39:18.132710",
+      "status": "open",
+      "upvotes": 0,
+      "replies": []
     }
   ],
-  "next_id": 2
+  "next_id": 3
 }
