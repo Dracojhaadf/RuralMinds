@@ -450,9 +450,9 @@ with tab1:
             stats = get_document_stats(sel)
             if stats:
                 st.metric("Type", stats['type'])
-        with col_z:
+        '''with col_z:
             if stats:
-                st.metric("Chunks", stats['chunk_count'])
+                st.metric("Chunks", stats['chunk_count'])'''
         
         st.markdown("---")
         
