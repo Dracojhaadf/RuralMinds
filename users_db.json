@@ -5,12 +5,6 @@
     "name": "Admin",
     "email": "admin@example.com"
   },
-  "Ishan": {
-    "password": "0c488d4fdd2609deadf0fe4dfe06e3b505682467e72f5a0923d19302a11ff2c6",
-    "role": "teacher",
-    "name": "sdd",
-    "email": "sdd"
-  },
   "Ishans": {
     "password": "7f7bc98436a3a349162bf0d1d59d8d4f7464ad9cb8de24b7b1268fe42d1e39bf",
     "role": "student",
@@ -34,5 +28,11 @@
     "role": "student",
     "name": "hb",
     "email": "hb"
+  },
+  "rowan": {
+    "password": "94aa4047965997819be79826422e0762e975bd0d5ee2c972a84d66177aa104b1",
+    "role": "teacher",
+    "name": "rowan",
+    "email": "rowaananish@gmail.com"
   }
 }
