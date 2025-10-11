@@ -76,6 +76,7 @@ def create_post(
     data["next_id"] += 1
     
     if save_forum_data(data):
+        logger.info(f"Post created: ID={post_id}, Title='{title}', User={username}")
         return True, "Post created successfully!", post_id
     else:
         return False, "Error saving post.", None
@@ -120,6 +121,7 @@ def add_reply(
         post["status"] = "answered"
     
     if save_forum_data(data):
+        logger.info(f"Reply added to post {post_id} by {username}")
         return True, "Reply added successfully!"
     else:
         return False, "Error saving reply."
@@ -198,6 +200,7 @@ def delete_post(post_id: int, username: str, user_role: str) -> Tuple[bool, str]
             if post["username"] == username or user_role == "teacher":
                 del data["posts"][i]
                 if save_forum_data(data):
+                    logger.info(f"Post {post_id} deleted by {username}")
                     return True, "Post deleted successfully."
                 else:
                     return False, "Error deleting post."

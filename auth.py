@@ -17,16 +17,17 @@ def hash_password(password: str) -> str:
 def load_users() -> dict:
     """Load users from JSON file."""
     if not os.path.exists(USERS_DB_PATH):
-        # Create default admin/teacher account
+        # Create default admin account
         default_users = {
             "admin": {
-                "password": hash_password("admin123"),
-                "role": "teacher",
-                "name": "Admin",
-                "email": "admin@example.com"
+                "password": hash_password("administrator"),
+                "role": "admin",
+                "name": "Administrator",
+                "email": "admin@nfs.local"
             }
         }
         save_users(default_users)
+        logger.info("Created default admin account: admin/administrator")
         return default_users
     
     try:
@@ -53,15 +54,15 @@ def create_user(username: str, password: str, role: str, name: str, email: str) 
     Args:
         username: Unique username
         password: User password (will be hashed)
-        role: Either 'teacher' or 'student'
+        role: Either 'teacher', 'student', or 'admin'
         name: Full name
         email: Email address
         
     Returns:
         Tuple of (success, message)
     """
-    if role not in ['teacher', 'student']:
-        return False, "Invalid role. Must be 'teacher' or 'student'."
+    if role not in ['teacher', 'student', 'admin']:
+        return False, "Invalid role. Must be 'teacher', 'student', or 'admin'."
     
     if len(username) < 3:
         return False, "Username must be at least 3 characters long."
@@ -97,11 +98,14 @@ def authenticate_user(username: str, password: str) -> Tuple[bool, Optional[dict
     users = load_users()
     
     if username not in users:
+        logger.warning(f"Login attempt with non-existent username: {username}")
         return False, None
     
     user = users[username]
+    hashed_input = hash_password(password)
     
-    if user['password'] == hash_password(password):
+    if user['password'] == hashed_input:
+        logger.info(f"Successful login: {username} ({user['role']})")
         return True, {
             'username': username,
             'role': user['role'],
@@ -109,6 +113,7 @@ def authenticate_user(username: str, password: str) -> Tuple[bool, Optional[dict
             'email': user['email']
         }
     
+    logger.warning(f"Failed login attempt for user: {username}")
     return False, None
 
 def get_user_role(username: str) -> Optional[str]:
@@ -164,6 +169,7 @@ def delete_user(username: str) -> Tuple[bool, str]:
     del users[username]
     
     if save_users(users):
+        logger.info(f"User deleted: {username}")
         return True, f"User '{username}' deleted successfully."
     else:
         return False, "Error saving changes."

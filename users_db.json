@@ -1,38 +1,20 @@
 {
   "admin": {
-    "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "password": "4194d1706ed1f408d5e02d672777019f4d5385c766a8c6ca8acba3167d36a7b9",
+    "role": "admin",
+    "name": "Administrator",
+    "email": "admin@nfs.local"
+  },
+  "Rowaan": {
+    "password": "895610cbb04ebf4251003a46314c035a45bf685d620d09a32f198cbfbe7d71c4",
     "role": "teacher",
-    "name": "Admin",
-    "email": "admin@example.com"
-  },
-  "Ishans": {
-    "password": "7f7bc98436a3a349162bf0d1d59d8d4f7464ad9cb8de24b7b1268fe42d1e39bf",
-    "role": "student",
-    "name": "nigg",
-    "email": "ss"
-  },
-  "Ishanss": {
-    "password": "571f22513734cf36ed68d9c29365ba034522bee4cf12c758906d4fe83ac5b3c1",
-    "role": "student",
-    "name": "nigg",
-    "email": "ss"
-  },
-  "aaa": {
-    "password": "ed02457b5c41d964dbd2f2a609d63fe1bb7528dbe55e1abf5b52c249cd735797",
-    "role": "student",
-    "name": "aaa",
-    "email": "aaaa"
-  },
-  "aaaa": {
-    "password": "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f",
-    "role": "student",
-    "name": "hb",
-    "email": "hb"
-  },
-  "rowan": {
-    "password": "94aa4047965997819be79826422e0762e975bd0d5ee2c972a84d66177aa104b1",
-    "role": "teacher",
-    "name": "rowan",
+    "name": "Rowaan Anish Abraham",
     "email": "rowaananish@gmail.com"
+  },
+  "Ishan": {
+    "password": "1e2c1b71ee3ff1d399f30917f6a0ba9ae460766acf97881754ad6d948e20d6c7",
+    "role": "student",
+    "name": "Ishan George Mathews",
+    "email": "ishangeorgemathews2006@gmail.com"
   }
 }
