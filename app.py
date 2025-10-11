@@ -462,36 +462,41 @@ with tab1:
                 "content": f"Hi! Ask me anything about **{sel}**. I'll answer based only on the document content."
             })
         
-        # Display messages
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+        # Display messages in a container
+        chat_container = st.container()
+        with chat_container:
+            for msg in st.session_state.messages:
+                with st.chat_message(msg["role"]):
+                    st.write(msg["content"])
         
-        # Chat input
-        if query := st.chat_input(f"Ask about {sel}..."):
-            st.session_state.messages.append({"role": "user", "content": query})
-            
-            with st.chat_message("user"):
-                st.write(query)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Searching document..."):
-                    try:
-                        answer, chunks = query_saved_document(sel, query)
-                        st.write(answer)
+        # Fixed chat input at bottom
+        st.markdown("---")
+        with st.container():
+            if query := st.chat_input(f"Ask about {sel}...", key="chat_input_main"):
+                st.session_state.messages.append({"role": "user", "content": query})
+                
+                with st.chat_message("user"):
+                    st.write(query)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Searching document..."):
+                        try:
+                            answer, chunks = query_saved_document(sel, query)
+                            st.write(answer)
+                            
+                            with st.expander("View Retrieved Sources"):
+                                for i, chunk in enumerate(chunks, 1):
+                                    st.markdown(f"**Source {i}:**")
+                                    st.text(chunk)
+                                    if i < len(chunks):
+                                        st.markdown("---")
                         
-                        with st.expander("View Retrieved Sources"):
-                            for i, chunk in enumerate(chunks, 1):
-                                st.markdown(f"**Source {i}:**")
-                                st.text(chunk)
-                                if i < len(chunks):
-                                    st.markdown("---")
-                    
-                    except Exception as e:
-                        answer = f"Error: {str(e)}"
-                        st.error(answer)
-            
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+                        except Exception as e:
+                            answer = f"Error: {str(e)}"
+                            st.error(answer)
+                
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                st.rerun()
     else:
         st.info("No documents available. Teachers can upload PDFs in the sidebar.")
 
