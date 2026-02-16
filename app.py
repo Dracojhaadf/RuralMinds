@@ -58,7 +58,7 @@ def inject_custom_css():
         /* Hide Streamlit elements */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+
         
         /* Chat Input Styling */
         .stChatInputContainer {
@@ -326,7 +326,7 @@ if is_admin:
     with col1:
         st.write(f"**Logged in as:** {st.session_state.user_data['name']}")
     with col3:
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("Logout", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.user_data = None
             st.rerun()
@@ -425,12 +425,12 @@ if is_admin:
 # SIDEBAR USER INFO & NAVIGATION
 with st.sidebar:
     st.markdown("---")
-    col_u1, col_u2 = st.columns([3, 1])
+    col_u1, col_u2 = st.columns([3, 3])
     with col_u1:
         st.write(f"**{st.session_state.user_data['name']}**")
         st.caption(f"{st.session_state.user_data['role'].title()}")
     with col_u2:
-        if st.button("🚪", help="Logout"):
+        if st.button("Logout", help="Logout"):
             st.session_state.authenticated = False
             st.session_state.user_data = None
             st.rerun()
@@ -523,7 +523,7 @@ with tab1:
                             st.error(msg)
         
         st.markdown("---")
-        st.header("💬 Current Chat")
+        st.header("💬 Documents")
         docs = get_available_documents()
         if docs:
             # Document Selection in Sidebar
