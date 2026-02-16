@@ -5,22 +5,16 @@
     "name": "Administrator",
     "email": "admin@nfs.local"
   },
-  "Rowaan": {
-    "password": "895610cbb04ebf4251003a46314c035a45bf685d620d09a32f198cbfbe7d71c4",
-    "role": "teacher",
-    "name": "Rowaan Anish Abraham",
-    "email": "rowaananish@gmail.com"
-  },
   "Ishan": {
     "password": "1e2c1b71ee3ff1d399f30917f6a0ba9ae460766acf97881754ad6d948e20d6c7",
     "role": "student",
     "name": "Ishan George Mathews",
     "email": "ishangeorgemathews2006@gmail.com"
   },
-  "rehanreji": {
-    "password": "49fe5950e34c5605137bbcf1a2a7f85deccc271749883f9137c7cf986a984005",
+  "Mikhail": {
+    "password": "1e2c1b71ee3ff1d399f30917f6a0ba9ae460766acf97881754ad6d948e20d6c7",
     "role": "teacher",
-    "name": "REHAN REJI",
-    "email": "rehan@gmail.com"
+    "name": "Mikhail John Shiju",
+    "email": "mikhailjs.csb2428@saintgits.org"
   }
 }
