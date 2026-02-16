@@ -25,3 +25,4 @@ sentence-transformers>=2.2.0
 fitz  # or pymupdf
 nltk>=3.8
 numpy>=1.21.0
+requests>=2.31.0

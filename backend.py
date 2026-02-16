@@ -11,6 +11,8 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from nltk.tokenize import sent_tokenize
 import nltk
+import requests
+
 
 try:
     from paperqa import Docs
@@ -29,8 +31,13 @@ DB_PATH = "chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 MAX_SENTENCES_PER_CHUNK = 5
 SENTENCE_OVERLAP = 2
-DEFAULT_K_RESULTS = 5
-MAX_CONTEXT_LENGTH = 2000
+DEFAULT_K_RESULTS = 3
+MAX_CONTEXT_LENGTH = 3000
+
+# Ollama Configuration
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "phi3:mini"
 
 # Ensure NLTK data
 try:
@@ -39,17 +46,16 @@ except LookupError:
     nltk.download('punkt', quiet=True)
 
 # --- GLOBAL MODELS ---
-_embed_model = None
+from functools import lru_cache
+
 _chroma_client = None
 _paperqa_docs = None
 
+@lru_cache(maxsize=1)
 def get_embedding_model():
-    """Lazy load embedding model."""
-    global _embed_model
-    if _embed_model is None:
-        logger.info(f"Loading embedding model: {EMBEDDING_MODEL}")
-        _embed_model = SentenceTransformer(EMBEDDING_MODEL)
-    return _embed_model
+    """Lazy load embedding model with caching."""
+    logger.info(f"Loading embedding model: {EMBEDDING_MODEL}")
+    return SentenceTransformer(EMBEDDING_MODEL)
 
 def get_chroma_client():
     """Get or create ChromaDB client."""
@@ -68,6 +74,78 @@ def get_paperqa_docs():
         logger.info("Initializing PaperQA")
         _paperqa_docs = Docs()
     return _paperqa_docs
+
+def query_ollama_simple(prompt: str, max_tokens: int = 1000) -> Optional[str]:
+    """
+    Simple Ollama query without context.
+    Used for confidence checking.
+    """
+    try:
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": max_tokens
+            }
+        }
+        
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
+        
+        if response.status_code == 200:
+            return response.json().get("response", "")
+        else:
+            logger.warning(f"Ollama simple query failed: {response.status_code}")
+            return None
+    
+    except requests.exceptions.ConnectionError:
+        logger.warning("Could not connect to Ollama for confidence check")
+        return None
+    except Exception as e:
+        logger.error(f"Error in simple Ollama query: {str(e)}")
+        return None
+
+def query_with_confidence(query: str, doc_name: str) -> Tuple[Optional[str], bool]:
+    """
+    Query LLM and check if it's confident about the answer.
+    
+    Returns:
+        (answer, needs_rag): 
+            - If confident: (answer_text, False)
+            - If not confident: (None, True)
+    """
+    try:
+        prompt = f"""You are an AI tutor. Answer the question if you're confident in your knowledge.
+
+If you're NOT confident, or if the question is asking about a specific document/PDF/file, respond with exactly: [NEED_CONTEXT]
+
+Question: {query}
+
+Answer:"""
+        
+        logger.info("🤔 Checking LLM confidence...")
+        response = query_ollama_simple(prompt, max_tokens=1000)
+        
+        if not response:
+            logger.info("⚡ LLM unavailable - triggering RAG")
+            return None, True
+        
+        # Check if LLM signals it needs context
+        response_lower = response.lower()
+        if "[need_context]" in response_lower or "need context" in response_lower or "[need context]" in response:
+            logger.info("⚡ LLM not confident - triggering RAG")
+            return None, True
+        
+        # LLM is confident
+        logger.info("✓ LLM confident - returning direct answer")
+        return response.strip(), False
+    
+    except Exception as e:
+        logger.error(f"Error in confidence check: {str(e)}")
+        return None, True  # On error, use RAG to be safe
+
+
 
 # --- PDF PROCESSING ---
 def sanitize_collection_name(filename: str) -> str:
@@ -195,14 +273,81 @@ def process_and_save_pdf(uploaded_file) -> Tuple[bool, str]:
         return False, f"Error: {str(e)}"
 
 # --- IMPROVED QUERY SYSTEM ---
-def query_with_context_limitation(
+
+def preload_ollama_model():
+    """
+    Forces Ollama to load the model into RAM with a warm-up query.
+    This ensures the model is fully loaded and ready before the first user query.
+    """
+    try:
+        logger.info(f"Warming up Ollama model: {OLLAMA_MODEL}...")
+        
+        # Send a warm-up query to force full model loading
+        warmup_payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": "Hello",
+            "stream": False,
+            "keep_alive": "10m",
+            "options": {
+                "num_predict": 5  # Very short response for warm-up
+            }
+        }
+        
+        response = requests.post(OLLAMA_API_URL, json=warmup_payload, timeout=30)
+        
+        if response.status_code == 200:
+            logger.info(f"✓ Ollama model {OLLAMA_MODEL} loaded and ready in RAM")
+            return True
+        else:
+            logger.warning(f"Ollama warm-up returned status: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.warning(f"Could not preload Ollama model: {str(e)}")
+        logger.warning("Model will load on first query instead")
+        return False
+
+def query_ollama(context: str, query: str) -> Optional[str]:
+    """
+    Query local Ollama instance with Mistral model.
+    Returns None if Ollama is not reachable.
+    """
+    try:
+        
+        system_prompt = """You are a helpful AI tutor.
+Answer clearly using only the provided context.
+Use short structured explanations."""
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": f"{system_prompt}\n\nContext:\n{context}\n\nQuestion:\n{query}\n\nAnswer:",
+            "stream": False,
+            "keep_alive": "10m",
+            "options": {
+                "temperature": 0.2,
+                "num_predict": 150
+            }
+        }
+        
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=120)
+        
+        if response.status_code == 200:
+            return response.json().get('response', '')
+        else:
+            logger.warning(f"Ollama returned status code: {response.status_code}")
+            return None
+            
+    except Exception as e:
+        logger.warning(f"Could not connect to Ollama: {str(e)}")
+        return None
+
+def generate_answer_from_context(
     retrieved_chunks: List[str],
     query: str,
     max_length: int = MAX_CONTEXT_LENGTH
 ) -> str:
     """
-    Create an answer based on retrieved chunks WITHOUT LLM hallucination.
-    Uses extractive QA instead of generative to avoid making up answers.
+    Generate an answer based on retrieved chunks using Ollama (with fallback).
     """
     if not retrieved_chunks:
         return "No relevant information found in the document."
@@ -220,16 +365,24 @@ def query_with_context_limitation(
     if not context:
         return "Retrieved context too long to process."
     
-    # Create a direct extraction prompt that doesn't encourage hallucination
-    return f"""Based on this document content, here is what was found relevant to your question:
+    # Try Ollama first
+    try:
+        ollama_response = query_ollama(context, query)
+        if ollama_response:
+            return ollama_response
+    except Exception as e:
+        logger.warning(f"Ollama generation failed: {str(e)}")
+    
+    # Fallback to extractive QA if Ollama fails
+    logger.info("Falling back to static template response")
+    return f"""Based on the document, here is the relevant information:
 
 QUESTION: {query}
 
 RELEVANT EXCERPTS:
 {context}
 
-ANSWER:
-The document contains the above information relevant to your question. Key points from the document have been extracted above. If you need more specific information, please refine your question."""
+(Note: AI generation unavailable - showing direct extracts)"""
 
 def query_saved_document_hybrid(
     doc_name: str,
@@ -237,30 +390,43 @@ def query_saved_document_hybrid(
     k: int = DEFAULT_K_RESULTS
 ) -> Tuple[str, List[str]]:
     """
-    Query documents using hybrid approach:
-    1. First try PaperQA if available (more reliable)
-    2. Fall back to ChromaDB + context-based approach
+    Query documents using confidence-based hybrid approach:
+    1. Try LLM with confidence check first
+    2. If LLM is confident, return direct answer (fast)
+    3. If LLM not confident, run full RAG pipeline
     """
     retrieved_chunks = []
     answer = ""
     
-    # Try PaperQA first
-    if Docs is not None:
-        try:
-            docs = get_paperqa_docs()
-            result = docs.query(query, max_sources=k)
-            
-            if result and result.answer:
-                answer = result.answer
-                # Extract citations for transparency
-                if hasattr(result, 'references') and result.references:
-                    answer += "\n\n**Sources:**\n"
-                    for ref in result.references[:3]:
-                        answer += f"- {ref}\n"
-                
-                return answer, []
-        except Exception as e:
-            logger.warning(f"PaperQA query failed: {str(e)}")
+    # STEP 1: Try LLM with confidence check first
+    try:
+        llm_answer, needs_rag = query_with_confidence(query, doc_name)
+        
+        if not needs_rag and llm_answer:
+            # LLM is confident - return fast answer
+            return llm_answer, []
+    except Exception as e:
+        logger.warning(f"Confidence check failed: {str(e)}, proceeding to RAG")
+    
+    # STEP 2: LLM not confident - run full RAG pipeline
+    logger.info("📚 Running full RAG pipeline...")
+    
+    # Skip PaperQA for speed (can re-enable if needed)
+    # if Docs is not None:
+    #     try:
+    #         docs = get_paperqa_docs()
+    #         result = docs.query(query, max_sources=k)
+    #         
+    #         if result and result.answer:
+    #             answer = result.answer
+    #             if hasattr(result, 'references') and result.references:
+    #                 answer += "\n\n**Sources:**\n"
+    #                 for ref in result.references[:3]:
+    #                     answer += f"- {ref}\n"
+    #             
+    #             return answer, []
+    #     except Exception as e:
+    #         logger.warning(f"PaperQA query failed: {str(e)}")
     
     # Fall back to ChromaDB with improved approach
     try:
@@ -281,7 +447,7 @@ def query_saved_document_hybrid(
             return "No relevant information found for this query.", []
         
         # Use context-based extraction instead of LLM
-        answer = query_with_context_limitation(retrieved_chunks, query)
+        answer = generate_answer_from_context(retrieved_chunks, query)
         
         return answer, retrieved_chunks
     

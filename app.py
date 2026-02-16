@@ -11,7 +11,8 @@ from backend import (
     get_available_videos,
     delete_document,
     delete_video,
-    get_document_stats
+    get_document_stats,
+    preload_ollama_model
 )
 from auth import (
     authenticate_user,
@@ -43,6 +44,14 @@ st.set_page_config(
     page_icon="📚",
     initial_sidebar_state="expanded"
 )
+
+# PRELOAD MODELS
+@st.cache_resource
+def init_llm():
+    """Preload Ollama model into RAM on startup."""
+    preload_ollama_model()
+
+init_llm()
 
 # CUSTOM CSS
 def inject_custom_css():
