@@ -44,6 +44,97 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CUSTOM CSS
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        /* Import Inter font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Hide Streamlit elements */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Chat Input Styling */
+        .stChatInputContainer {
+            padding-bottom: 20px;
+        }
+        
+        /* Message Styling */
+        .stChatMessage {
+            background-color: transparent !important;
+            border: none !important;
+        }
+        
+        /* User Message */
+        div[data-testid="stChatMessage"]:nth-child(odd) {
+            background-color: transparent;
+        }
+        
+        /* Assistant Message */
+        div[data-testid="stChatMessage"]:nth-child(even) {
+            background-color: #444654; /* ChatGPT dark grey */
+        }
+        
+        /* Avatar Styling */
+        .stChatMessage .stChatMessageAvatar {
+            background-color: #10a37f; /* OpenAI Green */
+            color: white;
+        }
+        
+        /* Sidebar Styling */
+        section[data-testid="stSidebar"] {
+            background-color: #202123;
+            color: white;
+        }
+        
+        /* General Button Styling */
+        .stButton>button {
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background-color: #343541;
+            color: white;
+            transition: all 0.2s;
+        }
+        
+        .stButton>button:hover {
+            border-color: #10a37f;
+            color: #10a37f;
+        }
+        
+        /* Primary Button */
+        div.stButton > button[kind="primary"] {
+            background-color: #10a37f;
+            border: none;
+            color: white;
+        }
+        
+        div.stButton > button[kind="primary"]:hover {
+            background-color: #1a7f64;
+        }
+        
+        /* Text Inputs */
+        .stTextInput > div > div > input {
+            background-color: #40414f;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+        
+        .stTextInput > div > div > input:focus {
+            border-color: #10a37f;
+            box-shadow: 0 0 0 1px #10a37f;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+inject_custom_css()
+
 # CONFIGURATION
 SOURCE_FOLDER = os.getenv("SOURCE_FOLDER", "source_folder")
 DB_PATH = "chroma_db"
@@ -86,13 +177,12 @@ def authenticate_admin(username: str, password: str) -> bool:
 
 def show_auth_page():
     """Display authentication page."""
-    st.markdown("<h1 style='text-align: center;'>📚 Next Generation File System</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>AI-Powered Document Q&A System</h3>", unsafe_allow_html=True)
-    st.markdown("---")
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
+        st.title("📚 NFS")
+        st.caption("AI-Powered Teaching Assistant")
+        st.markdown("---")
         if not st.session_state.show_signup:
             st.subheader("🔐 Login")
             
@@ -332,28 +422,23 @@ if is_admin:
 # MAIN APPLICATION (Teachers & Students)
 # =============================================================================
 
-# HEADER
-col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-with col1:
-    role_emoji = "👨‍🏫" if is_teacher else "👨‍🎓"
-    st.title(f"📚 NFS {role_emoji}")
-with col2:
-    st.write(f"**{st.session_state.user_data['name']}**")
-    st.caption(f"{st.session_state.user_data['role'].title()}")
-with col3:
+# SIDEBAR USER INFO & NAVIGATION
+with st.sidebar:
+    st.markdown("---")
+    col_u1, col_u2 = st.columns([3, 1])
+    with col_u1:
+        st.write(f"**{st.session_state.user_data['name']}**")
+        st.caption(f"{st.session_state.user_data['role'].title()}")
+    with col_u2:
+        if st.button("🚪", help="Logout"):
+            st.session_state.authenticated = False
+            st.session_state.user_data = None
+            st.rerun()
+    
     if is_teacher:
         pending = get_pending_posts_count()
         if pending > 0:
-            st.metric("🔔 Pending", pending)
-        else:
-            st.metric("🔔", "0")
-with col4:
-    if st.button("🚪 Logout", use_container_width=True):
-        st.session_state.authenticated = False
-        st.session_state.user_data = None
-        st.rerun()
-
-st.markdown("---")
+            st.info(f"🔔 {pending} Pending Posts")
 
 # MAIN TABS
 tab1, tab2 = st.tabs(["📚 Learning Hub", "💬 Discussion Forum"])
@@ -362,7 +447,7 @@ tab1, tab2 = st.tabs(["📚 Learning Hub", "💬 Discussion Forum"])
 # LEARNING HUB TAB
 # =============================================================================
 with tab1:
-    # SIDEBAR
+    # SIDEBAR CONTENT
     with st.sidebar:
         st.header("📚 Content Management")
         
@@ -436,23 +521,26 @@ with tab1:
                             st.rerun()
                         else:
                             st.error(msg)
-    
-    # MAIN CHAT AREA
-    docs = get_available_documents()
-    if docs:
-        if 'selected_doc' not in st.session_state:
-            st.session_state.selected_doc = docs[0]
-        
-        col_x, col_y= st.columns([3, 1])
-        with col_x:
-            sel = st.selectbox("📖 Select Document:", docs, key="selected_doc")
-        with col_y:
-            stats = get_document_stats(sel)
-            if stats:
-                st.metric("Type", stats['type'])
-        
         
         st.markdown("---")
+        st.header("💬 Current Chat")
+        docs = get_available_documents()
+        if docs:
+            # Document Selection in Sidebar
+            sel = st.selectbox("Select Document:", docs, key="selected_doc_sidebar")
+            
+            # Stats in sidebar
+            stats = get_document_stats(sel)
+            if stats:
+                st.caption(f"Type: {stats.get('type','PDF')} | Pages: {stats.get('page_count','N/A')}")
+        else:
+             sel = None
+             st.info("No documents available.")
+
+    # MAIN CHAT AREA
+    if sel:
+        # Transparent container for chat history
+        chat_container = st.container()
         
         # Initialize chat
         if 'messages' not in st.session_state or st.session_state.get('current_doc') != sel:
@@ -460,13 +548,14 @@ with tab1:
             st.session_state.current_doc = sel
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": f"👋 Hi! Ask me anything about **{sel}**. I'll answer based only on the document content."
+                "content": f"👋 Hi! I'm ready to help you with **{sel}**."
             })
         
         # Display messages
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+        with chat_container:
+            for msg in st.session_state.messages:
+                with st.chat_message(msg["role"]):
+                    st.write(msg["content"])
         
         # Chat input
         if query := st.chat_input(f"Ask about {sel}..."):
@@ -476,16 +565,16 @@ with tab1:
                 st.write(query)
             
             with st.chat_message("assistant"):
-                with st.spinner("🔍 Searching document..."):
+                with st.spinner("Thinking..."):
                     try:
                         answer, chunks = query_saved_document(sel, query)
                         st.write(answer)
                         
                         # Show sources
-                        with st.expander("📄 View Retrieved Sources"):
+                        with st.expander("retrieved context"):
                             for i, chunk in enumerate(chunks, 1):
                                 st.markdown(f"**Source {i}:**")
-                                st.text(chunk)
+                                st.caption(chunk)
                                 if i < len(chunks):
                                     st.markdown("---")
                     
@@ -495,7 +584,10 @@ with tab1:
             
             st.session_state.messages.append({"role": "assistant", "content": answer})
     else:
-        st.info("👈 No documents available. Teachers can upload PDFs in the sidebar.")
+        st.empty()
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            st.info("👈 Please upload or select a document in the sidebar to start chatting.")
 
 # =============================================================================
 # DISCUSSION FORUM TAB
