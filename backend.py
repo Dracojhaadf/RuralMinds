@@ -109,6 +109,41 @@ def query_ollama_simple(prompt: str, max_tokens: int = 1000) -> Optional[str]:
         logger.error(f"Error in simple Ollama query: {str(e)}")
         return None
 
+def query_ollama_stream_simple(prompt: str, max_tokens: int = 1000):
+    """
+    Stream simple Ollama query without context.
+    Yields chunks of text.
+    """
+    try:
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": max_tokens
+            }
+        }
+        
+        with requests.post(OLLAMA_API_URL, json=payload, stream=True, timeout=60) as response:
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            # Parse JSON chunk
+                            chunk = json.loads(line)
+                            if 'response' in chunk:
+                                yield chunk['response']
+                        except json.JSONDecodeError:
+                            continue
+            else:
+                logger.warning(f"Ollama simple streaming failed: {response.status_code}")
+                yield ""
+    
+    except Exception as e:
+        logger.error(f"Error in simple Ollama streaming: {str(e)}")
+        yield ""
+
 def query_with_confidence(query: str, doc_name: str) -> Tuple[Optional[str], bool]:
     """
     Query LLM and check if it's confident about the answer.
@@ -563,35 +598,54 @@ def query_saved_document_stream(
     Yields chunks of text. 
     Final yield is a special dictionary with sources: {'sources': [...]}.
     """
-    retrieved_chunks = []
     
-    # STEP 1: Try LLM with confidence check first
-    # Optimization: We can try to stream the confidence check too, OR 
-    # since we want speed, we might skip the "confident check" entirely for now 
-    # OR we keep it but it's a blocking call before streaming starts.
-    # Let's keep the confidence check as it makes the answer better/faster if it knows it.
-    
+    # STEP 1: Try LLM with confidence check (Streaming)
+    is_confident = True
     try:
-        # Note: query_with_confidence is NOT streaming, it waits for full response.
-        # This is acceptable if it's fast. If it's slow, we should stream it too.
-        # For now, let's assume it's reasonably fast or we accept the initial delay 
-        # for the check.
-        # Actually, the user wants "output as fast as possible". 
-        # Maybe we should just stream the RAG directly?
-        # But the hybrid approach is a feature. Let's keep it.
+        prompt = f"""You are an AI tutor. Answer the question if you're confident in your knowledge.
+
+If you're NOT confident, or if the question is asking about a specific document/PDF/file, respond with exactly: [NEED_CONTEXT]
+
+Question: {query}
+
+Answer:"""
         
-        llm_answer, needs_rag = query_with_confidence(query, doc_name)
+        # Buffer to check for [NEED_CONTEXT]
+        buffer = ""
+        committed = False
         
-        if not needs_rag and llm_answer:
-            # LLM is confident - yield the answer (simulate streaming or just yield logic)
-            # To make it feel like streaming, we can yield chunks of the answer
-            # or just yield the whole thing if it's short.
-            # Let's yield it in slightly larger chunks to simulate speed.
-            chunk_size = 10
-            for i in range(0, len(llm_answer), chunk_size):
-                yield llm_answer[i:i+chunk_size]
-            
-            # Yield empty sources
+        # We need a generator to handle the stream so we can peek at it
+        stream_gen = query_ollama_stream_simple(prompt, max_tokens=1000)
+        
+        for chunk in stream_gen:
+            if not committed:
+                buffer += chunk
+                
+                # Check for refusal signal in buffer (case insensitive)
+                buffer_lower = buffer.lower()
+                if "[need" in buffer_lower and ("context]" in buffer_lower or " context]" in buffer_lower):
+                    is_confident = False
+                    break
+                
+                # If buffer is getting long and no refusal, it's probably a real answer
+                # [NEED_CONTEXT] is ~14 chars. 
+                if len(buffer) > 40:
+                    yield buffer
+                    buffer = ""
+                    committed = True
+            else:
+                # Already committed to answering, just yield
+                yield chunk
+        
+        # Handle remaining buffer if we finished stream without comitting or breaking
+        if is_confident and not committed and buffer:
+            if "[need" in buffer.lower() and "context]" in buffer.lower():
+                is_confident = False
+            else:
+                yield buffer
+
+        if is_confident:
+            # Yield empty sources and return
             yield {'sources': []}
             return
 
@@ -599,6 +653,9 @@ def query_saved_document_stream(
         logger.warning(f"Confidence check failed: {str(e)}, proceeding to RAG")
     
     # STEP 2: RAG Pipeline
+    # If we are here, either !is_confident, or exception occurred
+    logger.info("📚 Running full RAG pipeline (Streaming)...")
+    
     try:
         client = get_chroma_client()
         collection = client.get_collection(name=doc_name)
