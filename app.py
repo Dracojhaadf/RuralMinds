@@ -618,79 +618,37 @@ with tab1:
                 with st.chat_message(msg["role"]):
                     st.write(msg["content"])
         
-        # Custom CSS and HTML for microphone icon overlay
+        # Unified Input Bar - Voice + Text
         st.markdown("""
         <style>
-        /* Container for the mic button overlay */
-        .mic-overlay {
-            position: fixed;
-            bottom: 30px;
-            right: 80px;
-            z-index: 1000;
-            cursor: pointer;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: background-color 0.2s;
-        }
-        
-        .mic-overlay:hover {
-            background-color: rgba(255,255,255,0.1);
-        }
-        
-        .mic-overlay svg {
-            width: 20px;
-            height: 20px;
-            fill: #b4b4b4;
-            transition: fill 0.2s;
-        }
-        
-        .mic-overlay:hover svg {
-            fill: #10a37f;
+        /* Style for unified input container */
+        div[data-testid="column"] {
+            padding: 0 !important;
         }
         </style>
         """, unsafe_allow_html=True)
         
-        # Microphone button with SVG icon
-        mic_clicked = st.button(
-            "🎤",  # Placeholder, will be replaced by CSS
-            key="mic_btn_overlay",
-            help="Voice Search",
-            type="secondary"
-        )
+        # Create columns for voice button and text input
+        col_voice, col_text = st.columns([0.08, 0.92])
         
-        # Add custom SVG microphone icon via HTML
-        st.markdown("""
-        <div class="mic-overlay" onclick="document.querySelector('[data-testid=\\"stButton\\"] button').click()">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-            </svg>
-        </div>
-        """, unsafe_allow_html=True)
+        with col_voice:
+            # Voice button
+            if st.button("🎤", key="voice_btn", help="Voice Search"):
+                st.session_state.show_voice_recorder = True
         
-        # Show voice recorder when mic is clicked
-        if mic_clicked or st.session_state.get('show_voice_recorder', False):
-            st.session_state.show_voice_recorder = True
+        # Show voice recorder in a modal-like expander when button is clicked
+        if st.session_state.get('show_voice_recorder', False):
             with st.expander("🗣️ Recording...", expanded=True):
                 audio_val = st.audio_input("Speak your question")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("✓ Done", type="primary"):
-                        st.session_state.show_voice_recorder = False
-                        st.rerun()
-                with col2:
-                    if st.button("✗ Cancel"):
-                        st.session_state.show_voice_recorder = False
-                        st.rerun()
+                if st.button("Cancel"):
+                    st.session_state.show_voice_recorder = False
+                    st.rerun()
         else:
             audio_val = None
         
-        # Text Input
-        query = st.chat_input(f"Ask about {sel}...")
+        with col_text:
+            # Text Input
+            query = st.chat_input(f"Ask about {sel}...")
         
         # Handle Audio Query
         if audio_val:

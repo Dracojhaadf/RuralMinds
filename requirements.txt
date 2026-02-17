@@ -9,9 +9,12 @@ nltk>=3.8.0
 # PDF processing
 PyMuPDF>=1.23.0
 
-# Video transcription (NEW)
-openai-whisper>=20231117
-ffmpeg-python>=0.2.0
+# Audio transcription (MMS-1B for multilingual support)
+torchaudio>=2.0.0
+
+# Language detection and translation
+langdetect>=1.0.9
+sentencepiece>=0.1.99
 
 # Additional utilities
 numpy>=1.24.0
@@ -19,7 +22,7 @@ pathlib>=1.0.1
 
 # Optional: For better performance
 accelerate>=0.20.0
-paperqa>=0.3.0
+paper-qa>=0.3.0
 chromadb>=0.3.21
 sentence-transformers>=2.2.0
 fitz  # or pymupdf

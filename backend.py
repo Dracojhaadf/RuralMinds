@@ -52,10 +52,8 @@ except LookupError:
 from functools import lru_cache
 
 _chroma_client = None
-_chroma_client = None
 _paperqa_docs = None
-_whisper_model = None
-import whisper
+_mms_model = None
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
@@ -189,27 +187,39 @@ Answer:"""
 
 # --- VOICE & TRANSLATION LAYER ---
 
-def get_whisper_model():
-    """Lazy load Whisper model."""
-    global _whisper_model
-    if _whisper_model is None:
-        logger.info("loading Whisper model (base)...")
-        _whisper_model = whisper.load_model("base")
-    return _whisper_model
+def get_mms_model():
+    """Lazy load MMS-1B model for multilingual speech recognition."""
+    global _mms_model
+    if _mms_model is None:
+        logger.info("🎤 Loading MMS-1B model for multilingual transcription...")
+        from transformers import pipeline
+        _mms_model = pipeline(
+            "automatic-speech-recognition",
+            model="facebook/mms-1b-all",
+            device="cpu"  # Use CPU for 16GB RAM compatibility
+        )
+        logger.info("✓ MMS-1B model loaded successfully")
+    return _mms_model
 
 def transcribe_audio(audio_path: str) -> str:
     """
-    Transcribe audio using Whisper.
-    Automatically translates to English if source is not English.
+    Transcribe audio using Facebook's MMS-1B model.
+    Supports English, Hindi, Malayalam and 1000+ languages.
     """
     try:
-        model = get_whisper_model()
+        model = get_mms_model()
         
-        # Transcribe (and translate to English)
-        result = model.transcribe(audio_path, task="translate")
+        # Transcribe audio
+        result = model(audio_path)
         text = result.get("text", "").strip()
         
         logger.info(f"🎤 Transcription: {text}")
+        
+        # If transcription is not in English, translate it
+        if text:
+            # Use normalize_query to translate to English if needed
+            text = normalize_query(text)
+        
         return text
     
     except Exception as e:
@@ -218,33 +228,160 @@ def transcribe_audio(audio_path: str) -> str:
 
 def normalize_query(query: str) -> str:
     """
-    Normalize query to English using LLM if needed.
-    Handles Romanized Hindi/Malayalam or mixed text.
+    DEPRECATED: Use detect_language + translate_to_english instead.
+    Kept for backward compatibility with transcribe_audio.
     """
-    # Simple heuristic: If it looks like English/Code, return as is.
-    # Otherwise, ask LLM to translate/normalize.
+    lang = detect_language(query)
+    if lang != 'en':
+        return translate_to_english(query, lang)
+    return query
+
+
+# --- LANGUAGE DETECTION & TRANSLATION ---
+
+# Global translation models cache
+_translation_models = {}
+
+def detect_language(text: str) -> str:
+    """
+    Detect language using langdetect + heuristics for Romanized text.
+    Returns: 'en', 'hi', 'ml', or 'en' (default)
+    """
+    try:
+        from langdetect import detect
+        
+        # Common Romanized Hindi/Malayalam words
+        indic_keywords = {
+            'hi': ['bhai', 'kya', 'hai', 'kaise', 'kyun', 'aur', 'yeh', 'woh'],
+            'ml': ['entha', 'engane', 'evide', 'cheyyane', 'und', 'illa', 'enth']
+        }
+        
+        text_lower = text.lower()
+        
+        # Check for Romanized keywords first
+        for lang, keywords in indic_keywords.items():
+            if any(word in text_lower for word in keywords):
+                logger.info(f"🔍 Detected Romanized {lang.upper()}")
+                return lang
+        
+        # Use langdetect for non-Romanized text
+        detected = detect(text)
+        logger.info(f"🔍 Detected language: {detected}")
+        
+        # Map to supported languages
+        if detected in ['hi', 'ml', 'en']:
+            return detected
+        
+        # Default to English for unsupported languages
+        return 'en'
+    
+    except Exception as e:
+        logger.warning(f"Language detection failed: {str(e)}, defaulting to English")
+        return 'en'
+
+
+def get_translation_model(source_lang: str, target_lang: str):
+    """Load and cache MarianMT translation model."""
+    global _translation_models
+    
+    model_key = f"{source_lang}-{target_lang}"
+    
+    if model_key not in _translation_models:
+        from transformers import MarianMTModel, MarianTokenizer
+        
+        # Map language codes to Helsinki-NLP model names
+        model_map = {
+            'hi-en': 'Helsinki-NLP/opus-mt-hi-en',
+            'ml-en': 'Helsinki-NLP/opus-mt-ml-en',
+            'en-hi': 'Helsinki-NLP/opus-mt-en-hi',
+            'en-ml': 'Helsinki-NLP/opus-mt-en-ml'
+        }
+        
+        if model_key not in model_map:
+            logger.warning(f"No translation model for {model_key}")
+            return None, None
+        
+        model_name = model_map[model_key]
+        logger.info(f"📥 Loading translation model: {model_name}")
+        
+        tokenizer = MarianTokenizer.from_pretrained(model_name)
+        model = MarianMTModel.from_pretrained(model_name)
+        
+        _translation_models[model_key] = (tokenizer, model)
+        logger.info(f"✓ Translation model loaded: {model_key}")
+    
+    return _translation_models[model_key]
+
+
+def translate_to_english(text: str, source_lang: str) -> str:
+    """Translate text from source language to English using MarianMT."""
+    if source_lang == 'en':
+        return text
     
     try:
-        # Prompt to normalize
-        prompt = f"""Task: Translate/Normalize the following text to standard English.
-If it is already English, output it exactly as is.
-If it is Romanized Hindi/Malayalam, translate it to English.
-
-Text: "{query}"
-
-English Translation:"""
+        tokenizer, model = get_translation_model(source_lang, 'en')
         
-        normalized = query_ollama_simple(prompt, max_tokens=200)
+        if not tokenizer or not model:
+            logger.warning(f"Translation unavailable for {source_lang}, returning original")
+            return text
         
-        if normalized:
-            clean = normalized.strip().strip('"')
-            logger.info(f"🔄 Normalized: '{query}' -> '{clean}'")
-            return clean
+        # Translate
+        inputs = tokenizer([text], return_tensors="pt", padding=True)
+        translated = model.generate(**inputs)
+        result = tokenizer.decode(translated[0], skip_special_tokens=True)
         
-        return query
+        logger.info(f"🌍 Translated ({source_lang}→en): '{text}' → '{result}'")
+        return result
+    
     except Exception as e:
-        logger.warning(f"Normalization failed: {str(e)}")
-        return query
+        logger.error(f"Translation error: {str(e)}")
+        return text
+
+
+def translate_from_english(text: str, target_lang: str) -> str:
+    """Translate text from English to target language using MarianMT."""
+    if target_lang == 'en':
+        return text
+    
+    try:
+        tokenizer, model = get_translation_model('en', target_lang)
+        
+        if not tokenizer or not model:
+            logger.warning(f"Translation unavailable for {target_lang}, returning English")
+            return text
+        
+        # Translate
+        inputs = tokenizer([text], return_tensors="pt", padding=True)
+        translated = model.generate(**inputs)
+        result = tokenizer.decode(translated[0], skip_special_tokens=True)
+        
+        logger.info(f"🌍 Translated (en→{target_lang}): '{text}' → '{result}'")
+        return result
+    
+    except Exception as e:
+        logger.error(f"Translation error: {str(e)}")
+        return text
+
+
+def is_document_query(query: str) -> bool:
+    """
+    Deterministic check if query is document-specific.
+    Returns True if query mentions document/file/chapter/page.
+    """
+    doc_keywords = [
+        'pdf', 'document', 'file', 'chapter', 'page', 'section',
+        'this doc', 'the doc', 'this pdf', 'the pdf', 'this file'
+    ]
+    
+    query_lower = query.lower()
+    is_doc = any(keyword in query_lower for keyword in doc_keywords)
+    
+    if is_doc:
+        logger.info(f"📄 Document-specific query detected")
+    else:
+        logger.info(f"💬 General query detected")
+    
+    return is_doc
 
 
 
@@ -416,9 +553,24 @@ def query_ollama_stream(context: str, query: str):
     Yields chunks of text.
     """
     try:
-        system_prompt = """You are a helpful AI tutor.
-Answer clearly using only the provided context.
-Use short structured explanations."""
+        system_prompt = system_prompt = """
+You are a Ai Tutor.
+
+Rules:
+0. You can get questions in english,malayalam or hindi.
+1. Answer the question directly and simply.
+2. Do NOT guess the user's intention beyond the question.
+3. Do NOT mention language detection.
+4. Do NOT translate unless explicitly asked.
+5. If the question is informal or partially in another language, interpret it as a simple academic question.
+6. Never explain what language the user used.
+7. Do not add extra commentary.
+8. Keep answers concise and correct.
+
+If the user asks in mixed language (e.g., Malayalam/Hindi written in English),
+interpret the meaning and answer normally in English.
+"""
+
 
         payload = {
             "model": OLLAMA_MODEL,
@@ -657,91 +809,103 @@ def query_saved_document_stream(
     k: int = DEFAULT_K_RESULTS
 ):
     """
-    Stream query documents using confidence-based hybrid approach.
+    Stream query documents using deterministic language pipeline:
+    1. Detect language
+    2. Translate to English if needed
+    3. Check if document-specific (keyword-based)
+    4. If general: use LLM directly
+    5. If document-specific: use RAG
+    6. Translate response back if needed
+    
     Yields chunks of text. 
     Final yield is a special dictionary with sources: {'sources': [...]}.
     """
     
-    # STEP 1: Try LLM with confidence check (Streaming)
-    is_confident = True
-    try:
-        prompt = f"""You are an AI tutor. Answer the question if you're confident in your knowledge.
+    # STEP 1: Language Detection
+    original_lang = detect_language(query)
+    logger.info(f"🌍 Original language: {original_lang}")
+    
+    # STEP 2: Translate to English if needed
+    english_query = query
+    if original_lang != 'en':
+        english_query = translate_to_english(query, original_lang)
+        logger.info(f"🔄 Translated query: {english_query}")
+    
+    # STEP 3: Deterministic check - is this a document query?
+    if is_document_query(english_query):
+        # Document-specific query → RAG Pipeline
+        logger.info("📚 Running RAG pipeline...")
+        
+        try:
+            client = get_chroma_client()
+            collection = client.get_collection(name=doc_name)
+            embed_model = get_embedding_model()
+            query_emb = embed_model.encode([english_query]).tolist()
+            results = collection.query(query_embeddings=query_emb, n_results=k)
+            retrieved_chunks = results['documents'][0] if results['documents'] else []
+            
+            if not retrieved_chunks:
+                response = "No relevant information found for this query."
+                if original_lang != 'en':
+                    response = translate_from_english(response, original_lang)
+                yield response
+                yield {'sources': []}
+                return
+            
+            # Stream the answer generation
+            answer_buffer = ""
+            for chunk in generate_answer_from_context_stream(retrieved_chunks, english_query):
+                answer_buffer += chunk
+                yield chunk
+            
+            # Translate answer back if needed
+            if original_lang != 'en' and answer_buffer:
+                translated_answer = translate_from_english(answer_buffer, original_lang)
+                # Clear previous output and yield translated version
+                # Note: In streaming, we can't "replace" - so we append translation
+                yield f"\n\n---\n**Translation ({original_lang}):**\n{translated_answer}"
+                
+            # Yield sources at the end
+            yield {'sources': retrieved_chunks}
+            
+        except Exception as e:
+            error_msg = f"Error during RAG: {str(e)}"
+            if original_lang != 'en':
+                error_msg = translate_from_english(error_msg, original_lang)
+            yield error_msg
+            yield {'sources': []}
+    
+    else:
+        # General query → Direct LLM
+        logger.info("💬 Using general LLM...")
+        
+        try:
+            # Use simple LLM query
+            prompt = f"""You are an AI tutor. Answer the following question clearly and concisely.
 
-If you're NOT confident, or if the question is asking about a specific document/PDF/file, respond with exactly: [NEED_CONTEXT]
-
-Question: {query}
+Question: {english_query}
 
 Answer:"""
-        
-        # Buffer to check for [NEED_CONTEXT]
-        buffer = ""
-        committed = False
-        
-        # We need a generator to handle the stream so we can peek at it
-        stream_gen = query_ollama_stream_simple(prompt, max_tokens=1000)
-        
-        for chunk in stream_gen:
-            if not committed:
-                buffer += chunk
-                
-                # Check for refusal signal in buffer (case insensitive)
-                buffer_lower = buffer.lower()
-                if "[need" in buffer_lower and ("context]" in buffer_lower or " context]" in buffer_lower):
-                    is_confident = False
-                    break
-                
-                # If buffer is getting long and no refusal, it's probably a real answer
-                # [NEED_CONTEXT] is ~14 chars. 
-                if len(buffer) > 40:
-                    yield buffer
-                    buffer = ""
-                    committed = True
-            else:
-                # Already committed to answering, just yield
-                yield chunk
-        
-        # Handle remaining buffer if we finished stream without comitting or breaking
-        if is_confident and not committed and buffer:
-            if "[need" in buffer.lower() and "context]" in buffer.lower():
-                is_confident = False
-            else:
-                yield buffer
-
-        if is_confident:
-            # Yield empty sources and return
-            yield {'sources': []}
-            return
-
-    except Exception as e:
-        logger.warning(f"Confidence check failed: {str(e)}, proceeding to RAG")
-    
-    # STEP 2: RAG Pipeline
-    # If we are here, either !is_confident, or exception occurred
-    logger.info("📚 Running full RAG pipeline (Streaming)...")
-    
-    try:
-        client = get_chroma_client()
-        collection = client.get_collection(name=doc_name)
-        embed_model = get_embedding_model()
-        query_emb = embed_model.encode([query]).tolist()
-        results = collection.query(query_embeddings=query_emb, n_results=k)
-        retrieved_chunks = results['documents'][0] if results['documents'] else []
-        
-        if not retrieved_chunks:
-            yield "No relevant information found for this query."
-            yield {'sources': []}
-            return
-        
-        # Stream the answer generation
-        for chunk in generate_answer_from_context_stream(retrieved_chunks, query):
-            yield chunk
             
-        # Yield sources at the end
-        yield {'sources': retrieved_chunks}
-        
-    except Exception as e:
-        yield f"Error during streaming RAG: {str(e)}"
-        yield {'sources': []}
+            answer_buffer = ""
+            for chunk in query_ollama_stream_simple(prompt, max_tokens=1000):
+                answer_buffer += chunk
+                yield chunk
+            
+            # Translate answer back if needed
+            if original_lang != 'en' and answer_buffer:
+                translated_answer = translate_from_english(answer_buffer, original_lang)
+                yield f"\n\n---\n**Translation ({original_lang}):**\n{translated_answer}"
+            
+            # No sources for general queries
+            yield {'sources': []}
+            
+        except Exception as e:
+            error_msg = f"Error during LLM query: {str(e)}"
+            if original_lang != 'en':
+                error_msg = translate_from_english(error_msg, original_lang)
+            yield error_msg
+            yield {'sources': []}
 
 
 # --- COMPATIBILITY FUNCTIONS ---
