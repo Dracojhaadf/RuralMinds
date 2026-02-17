@@ -639,10 +639,26 @@ with tab1:
         # Show voice recorder in a modal-like expander when button is clicked
         if st.session_state.get('show_voice_recorder', False):
             with st.expander("🗣️ Recording...", expanded=True):
+                # Language selector
+                voice_lang = st.selectbox(
+                    "🌍 Voice Language",
+                    ["English", "Hindi", "Malayalam"],
+                    key="voice_lang_selector"
+                )
+                
                 audio_val = st.audio_input("Speak your question")
-                if st.button("Cancel"):
-                    st.session_state.show_voice_recorder = False
-                    st.rerun()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✓ Submit", type="primary"):
+                        st.session_state.voice_lang = voice_lang
+                        st.session_state.show_voice_recorder = False
+                        st.rerun()
+                with col2:
+                    if st.button("✗ Cancel"):
+                        st.session_state.show_voice_recorder = False
+                        st.session_state.voice_lang = None
+                        st.rerun()
         else:
             audio_val = None
         
@@ -651,16 +667,21 @@ with tab1:
             query = st.chat_input(f"Ask about {sel}...")
         
         # Handle Audio Query
-        if audio_val:
-            with st.spinner("🎧 Transcribing & Translating..."):
+        if audio_val and st.session_state.get('voice_lang'):
+            # Map language to code
+            lang_map = {"English": "en", "Hindi": "hi", "Malayalam": "ml"}
+            selected_lang = st.session_state.voice_lang
+            lang_code = lang_map.get(selected_lang, "en")
+            
+            with st.spinner(f"🎧 Transcribing {selected_lang}..."):
                 try:
                     # Save temp audio
                     temp_filename = "temp_voice_query.wav"
                     with open(temp_filename, "wb") as f:
                         f.write(audio_val.read())
                     
-                    # Transcribe
-                    transcribed_text = transcribe_audio(temp_filename)
+                    # Transcribe with language code
+                    transcribed_text = transcribe_audio(temp_filename, lang_code)
                     
                     # Safely remove file
                     if os.path.exists(temp_filename):
@@ -672,8 +693,11 @@ with tab1:
                     
                     if transcribed_text:
                         query = transcribed_text  # Set query to transcribed text
+                        # Clear voice lang after use
+                        st.session_state.voice_lang = None
                 except Exception as e:
                     st.error(f"Error processing audio: {str(e)}")
+                    st.session_state.voice_lang = None
         
         if query:
             # Normalize if it looks like Romanized text (optional but good for mixed language)

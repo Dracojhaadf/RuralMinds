@@ -187,38 +187,48 @@ Answer:"""
 
 # --- VOICE & TRANSLATION LAYER ---
 
-def get_mms_model():
-    """Lazy load MMS-1B model for multilingual speech recognition."""
+def get_asr_model():
+    """Lazy load faster-whisper model for multilingual speech recognition."""
     global _mms_model
     if _mms_model is None:
-        logger.info("🎤 Loading MMS-1B model for multilingual transcription...")
-        from transformers import pipeline
-        _mms_model = pipeline(
-            "automatic-speech-recognition",
-            model="facebook/mms-1b-all",
-            device="cpu"  # Use CPU for 16GB RAM compatibility
+        logger.info("🎤 Loading faster-whisper large-v3 (int8)...")
+        from faster_whisper import WhisperModel
+        _mms_model = WhisperModel(
+            "large-v3",
+            device="cpu",
+            compute_type="int8"  # Optimized for 16GB RAM
         )
-        logger.info("✓ MMS-1B model loaded successfully")
+        logger.info("✓ Faster-whisper model loaded successfully")
     return _mms_model
 
-def transcribe_audio(audio_path: str) -> str:
+def transcribe_audio(audio_path: str, language_code: str = "en") -> str:
     """
-    Transcribe audio using Facebook's MMS-1B model.
-    Supports English, Hindi, Malayalam and 1000+ languages.
+    Transcribe audio using faster-whisper with forced language.
+    
+    Args:
+        audio_path: Path to audio file
+        language_code: Language code ('en', 'hi', 'ml')
+    
+    Returns:
+        Transcribed text
     """
     try:
-        model = get_mms_model()
+        model = get_asr_model()
         
-        # Transcribe audio
-        result = model(audio_path)
-        text = result.get("text", "").strip()
+        logger.info(f"🎤 Transcribing audio in {language_code}...")
+        
+        # Transcribe with forced language
+        segments, info = model.transcribe(
+            audio_path,
+            language=language_code,
+            beam_size=1  # Speed optimization
+        )
+        
+        # Combine segments into text
+        text = " ".join([seg.text for seg in segments])
+        text = text.strip()
         
         logger.info(f"🎤 Transcription: {text}")
-        
-        # If transcription is not in English, translate it
-        if text:
-            # Use normalize_query to translate to English if needed
-            text = normalize_query(text)
         
         return text
     
@@ -368,6 +378,11 @@ def is_document_query(query: str) -> bool:
     Deterministic check if query is document-specific.
     Returns True if query mentions document/file/chapter/page.
     """
+    # Type safety check
+    if not isinstance(query, str):
+        logger.warning(f"is_document_query received non-string: {type(query)}")
+        return False
+    
     doc_keywords = [
         'pdf', 'document', 'file', 'chapter', 'page', 'section',
         'this doc', 'the doc', 'this pdf', 'the pdf', 'this file'

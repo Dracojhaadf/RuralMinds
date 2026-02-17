@@ -9,8 +9,8 @@ nltk>=3.8.0
 # PDF processing
 PyMuPDF>=1.23.0
 
-# Audio transcription (MMS-1B for multilingual support)
-torchaudio>=2.0.0
+# Audio transcription (faster-whisper for better accuracy)
+faster-whisper>=1.0.0
 
 # Language detection and translation
 langdetect>=1.0.9
