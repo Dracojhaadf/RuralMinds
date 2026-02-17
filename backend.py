@@ -5,6 +5,9 @@ import subprocess
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict
 import logging
+# Import SOURCE_FOLDER from app config or define it here if needed. 
+# It seems SOURCE_FOLDER is defined in app.py but used in backend.Let's define a default.
+SOURCE_FOLDER = os.getenv("SOURCE_FOLDER", "source_folder")
 from datetime import datetime
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -302,14 +305,57 @@ def preload_ollama_model():
             logger.warning(f"Ollama warm-up returned status: {response.status_code}")
             return False
             
+            return False
+            
     except Exception as e:
         logger.warning(f"Could not preload Ollama model: {str(e)}")
         logger.warning("Model will load on first query instead")
         return False
 
+def query_ollama_stream(context: str, query: str):
+    """
+    Stream query local Ollama instance with phi3:mini model.
+    Yields chunks of text.
+    """
+    try:
+        system_prompt = """You are a helpful AI tutor.
+Answer clearly using only the provided context.
+Use short structured explanations."""
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": f"{system_prompt}\n\nContext:\n{context}\n\nQuestion:\n{query}\n\nAnswer:",
+            "stream": True,  # Enable streaming
+            "keep_alive": "10m",
+            "options": {
+                "temperature": 0.2,
+                "num_predict": 150
+            }
+        }
+        
+        with requests.post(OLLAMA_API_URL, json=payload, stream=True, timeout=120) as response:
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            # Parse JSON chunk
+                            chunk = json.loads(line)
+                            if 'response' in chunk:
+                                yield chunk['response']
+                        except json.JSONDecodeError:
+                            continue
+            else:
+                logger.warning(f"Ollama streaming returned status code: {response.status_code}")
+                yield "Error: Could not connect to AI model."
+            
+    except Exception as e:
+        logger.warning(f"Could not connect to Ollama: {str(e)}")
+        yield f"Error: {str(e)}"
+
+
 def query_ollama(context: str, query: str) -> Optional[str]:
     """
-    Query local Ollama instance with Mistral model.
+    Query local Ollama instance with phi3:mini model.
     Returns None if Ollama is not reachable.
     """
     try:
@@ -384,6 +430,58 @@ RELEVANT EXCERPTS:
 
 (Note: AI generation unavailable - showing direct extracts)"""
 
+def generate_answer_from_context_stream(
+    retrieved_chunks: List[str],
+    query: str,
+    max_length: int = MAX_CONTEXT_LENGTH
+):
+    """
+    Generate an answer based on retrieved chunks using Ollama (streaming).
+    Yields chunks.
+    """
+    if not retrieved_chunks:
+        yield "No relevant information found in the document."
+        return
+    
+    # Combine chunks with length limit
+    context = ""
+    for chunk in retrieved_chunks:
+        if len(context) + len(chunk) < max_length:
+            context += chunk + "\n\n"
+        else:
+            break
+    
+    context = context.strip()
+    
+    if not context:
+        yield "Retrieved context too long to process."
+        return
+    
+    # Try Ollama first
+    try:
+        # Check if Ollama is reachable first (optional optimization, but we'll just try stream)
+        # We can reuse the stream function
+        for chunk in query_ollama_stream(context, query):
+            yield chunk
+        return
+            
+    except Exception as e:
+        logger.warning(f"Ollama generation failed: {str(e)}")
+    
+    # Fallback to extractive QA if Ollama fails
+    logger.info("Falling back to static template response")
+    fallback = f"""Based on the document, here is the relevant information:
+
+QUESTION: {query}
+
+RELEVANT EXCERPTS:
+{context}
+
+(Note: AI generation unavailable - showing direct extracts)"""
+    
+    yield fallback
+
+
 def query_saved_document_hybrid(
     doc_name: str,
     query: str,
@@ -455,10 +553,83 @@ def query_saved_document_hybrid(
         logger.error(f"Error querying: {str(e)}")
         return f"Error generating answer: {str(e)}", retrieved_chunks if retrieved_chunks else []
 
+def query_saved_document_stream(
+    doc_name: str,
+    query: str,
+    k: int = DEFAULT_K_RESULTS
+):
+    """
+    Stream query documents using confidence-based hybrid approach.
+    Yields chunks of text. 
+    Final yield is a special dictionary with sources: {'sources': [...]}.
+    """
+    retrieved_chunks = []
+    
+    # STEP 1: Try LLM with confidence check first
+    # Optimization: We can try to stream the confidence check too, OR 
+    # since we want speed, we might skip the "confident check" entirely for now 
+    # OR we keep it but it's a blocking call before streaming starts.
+    # Let's keep the confidence check as it makes the answer better/faster if it knows it.
+    
+    try:
+        # Note: query_with_confidence is NOT streaming, it waits for full response.
+        # This is acceptable if it's fast. If it's slow, we should stream it too.
+        # For now, let's assume it's reasonably fast or we accept the initial delay 
+        # for the check.
+        # Actually, the user wants "output as fast as possible". 
+        # Maybe we should just stream the RAG directly?
+        # But the hybrid approach is a feature. Let's keep it.
+        
+        llm_answer, needs_rag = query_with_confidence(query, doc_name)
+        
+        if not needs_rag and llm_answer:
+            # LLM is confident - yield the answer (simulate streaming or just yield logic)
+            # To make it feel like streaming, we can yield chunks of the answer
+            # or just yield the whole thing if it's short.
+            # Let's yield it in slightly larger chunks to simulate speed.
+            chunk_size = 10
+            for i in range(0, len(llm_answer), chunk_size):
+                yield llm_answer[i:i+chunk_size]
+            
+            # Yield empty sources
+            yield {'sources': []}
+            return
+
+    except Exception as e:
+        logger.warning(f"Confidence check failed: {str(e)}, proceeding to RAG")
+    
+    # STEP 2: RAG Pipeline
+    try:
+        client = get_chroma_client()
+        collection = client.get_collection(name=doc_name)
+        embed_model = get_embedding_model()
+        query_emb = embed_model.encode([query]).tolist()
+        results = collection.query(query_embeddings=query_emb, n_results=k)
+        retrieved_chunks = results['documents'][0] if results['documents'] else []
+        
+        if not retrieved_chunks:
+            yield "No relevant information found for this query."
+            yield {'sources': []}
+            return
+        
+        # Stream the answer generation
+        for chunk in generate_answer_from_context_stream(retrieved_chunks, query):
+            yield chunk
+            
+        # Yield sources at the end
+        yield {'sources': retrieved_chunks}
+        
+    except Exception as e:
+        yield f"Error during streaming RAG: {str(e)}"
+        yield {'sources': []}
+
+
 # --- COMPATIBILITY FUNCTIONS ---
 def query_saved_document(doc_name: str, query: str, k: int = DEFAULT_K_RESULTS) -> Tuple[str, List[str]]:
     """Backward compatible wrapper."""
     return query_saved_document_hybrid(doc_name, query, k)
+    
+
 
 def get_available_documents() -> List[str]:
     """Get list of all documents."""
@@ -484,6 +655,61 @@ def delete_document(doc_name: str) -> Tuple[bool, str]:
     except Exception as e:
         logger.error(f"Error deleting document: {str(e)}")
         return False, f"Error deleting document: {str(e)}"
+
+def rebuild_database() -> Tuple[bool, str]:
+    """Rebuild the entire ChromaDB from source files."""
+    try:
+        logger.info("♻️ Starting database rebuild...")
+        
+        # 1. Process PDFs
+        pdf_count = 0
+        if os.path.exists(SOURCE_FOLDER):
+            for filename in os.listdir(SOURCE_FOLDER):
+                if filename.lower().endswith('.pdf'):
+                    file_path = os.path.join(SOURCE_FOLDER, filename)
+                    with open(file_path, 'rb') as f:
+                        # Create a mock file object with name attribute
+                        from io import BytesIO
+                        class NamedBytesIO(BytesIO):
+                            def __init__(self, content, name):
+                                super().__init__(content)
+                                self.name = name
+                        
+                        file_obj = NamedBytesIO(f.read(), filename)
+                        success, msg = process_and_save_pdf(file_obj)
+                        if success:
+                            pdf_count += 1
+                            logger.info(f"Re-indexed: {filename}")
+                        else:
+                            logger.error(f"Failed to re-index {filename}: {msg}")
+        
+        # 2. Process Videos (Captions)
+        video_count = 0
+        if os.path.exists(VIDEO_STORAGE_PATH):
+            for filename in os.listdir(VIDEO_STORAGE_PATH):
+                if filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                    # Check if caption exists
+                    video_name = Path(filename).stem
+                    caption_data = load_caption_file(video_name)
+                    
+                    if caption_data:
+                        # Re-index caption
+                        success, msg = process_video_captions(video_name, caption_data['full_text'])
+                        if success:
+                            video_count += 1
+                            logger.info(f"Re-indexed captions for: {video_name}")
+                    else:
+                        # Auto-transcribe if missing? Maybe too heavy.
+                        # For now, just skip if no caption file.
+                        pass
+
+        logger.info(f"✅ Rebuild complete. PDFs: {pdf_count}, Videos: {video_count}")
+        return True, f"Rebuild complete. Indexed {pdf_count} documents and {video_count} video captions."
+        
+    except Exception as e:
+        logger.error(f"Database rebuild failed: {str(e)}")
+        return False, f"Rebuild failed: {str(e)}"
+
 
 def get_document_stats(doc_name: str) -> Optional[Dict]:
     """Get document statistics."""

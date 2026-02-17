@@ -9,10 +9,10 @@ from backend import (
     load_caption_file,
     process_video_captions,
     get_available_videos,
-    delete_document,
     delete_video,
     get_document_stats,
-    preload_ollama_model
+    preload_ollama_model,
+    query_saved_document_stream
 )
 from auth import (
     authenticate_user,
@@ -138,6 +138,55 @@ def inject_custom_css():
         .stTextInput > div > div > input:focus {
             border-color: #10a37f;
             box-shadow: 0 0 0 1px #10a37f;
+        }
+
+        /* THINKING ANIMATION */
+        .thinking-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px;
+        }
+        
+        .thinking-text {
+            font-size: 14px;
+            color: #b4b4b4;
+            font-style: italic;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        /* Square with Circle Orbit Animation */
+        .loader-box {
+            position: relative;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #10a37f;
+            border-radius: 2px;
+        }
+        
+        .loader-circle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background-color: white;
+            border-radius: 50%;
+            top: -3px;
+            left: -3px;
+            animation: orbit 2s linear infinite;
+        }
+        
+        @keyframes orbit {
+            0% { top: -3px; left: -3px; }
+            25% { top: -3px; left: 17px; }
+            50% { top: 17px; left: 17px; }
+            75% { top: 17px; left: -3px; }
+            100% { top: -3px; left: -3px; }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -574,24 +623,51 @@ with tab1:
                 st.write(query)
             
             with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        answer, chunks = query_saved_document(sel, query)
-                        st.write(answer)
+                message_placeholder = st.empty()
+                full_response = ""
+                sources = []
+                
+                # Show custom thinking animation
+                with message_placeholder.container():
+                    st.markdown("""
+                        <div class="thinking-container">
+                            <div class="loader-box">
+                                <div class="loader-circle"></div>
+                            </div>
+                            <span class="thinking-text">Thinking...</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                try:
+                    # Stream the response
+                    for chunk in query_saved_document_stream(sel, query):
+                        # check if chunk is a dictionary (sources)
+                        if isinstance(chunk, dict) and 'sources' in chunk:
+                            sources = chunk['sources']
+                            continue
+                            
+                        full_response += chunk
                         
-                        # Show sources
+                        # Update the placeholder with the accumulated response + cursor
+                        message_placeholder.markdown(full_response + "▌")
+                    
+                    # Final update without cursor
+                    message_placeholder.markdown(full_response)
+                    
+                    # Show sources if available
+                    if sources:
                         with st.expander("retrieved context"):
-                            for i, chunk in enumerate(chunks, 1):
+                            for i, chunk in enumerate(sources, 1):
                                 st.markdown(f"**Source {i}:**")
                                 st.caption(chunk)
-                                if i < len(chunks):
+                                if i < len(sources):
                                     st.markdown("---")
-                    
-                    except Exception as e:
-                        answer = f"❌ Error: {str(e)}"
-                        st.error(answer)
-            
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+                                    
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                
+                except Exception as e:
+                    message_placeholder.error(f"❌ Error: {str(e)}")
+
     else:
         st.empty()
         col1, col2, col3 = st.columns([1,2,1])
