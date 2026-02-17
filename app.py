@@ -12,7 +12,10 @@ from backend import (
     delete_video,
     get_document_stats,
     preload_ollama_model,
-    query_saved_document_stream
+    preload_ollama_model,
+    query_saved_document_stream,
+    transcribe_audio,
+    normalize_query
 )
 from auth import (
     authenticate_user,
@@ -615,8 +618,115 @@ with tab1:
                 with st.chat_message(msg["role"]):
                     st.write(msg["content"])
         
-        # Chat input
-        if query := st.chat_input(f"Ask about {sel}..."):
+        # Custom CSS and HTML for microphone icon overlay
+        st.markdown("""
+        <style>
+        /* Container for the mic button overlay */
+        .mic-overlay {
+            position: fixed;
+            bottom: 30px;
+            right: 80px;
+            z-index: 1000;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s;
+        }
+        
+        .mic-overlay:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+        
+        .mic-overlay svg {
+            width: 20px;
+            height: 20px;
+            fill: #b4b4b4;
+            transition: fill 0.2s;
+        }
+        
+        .mic-overlay:hover svg {
+            fill: #10a37f;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Microphone button with SVG icon
+        mic_clicked = st.button(
+            "🎤",  # Placeholder, will be replaced by CSS
+            key="mic_btn_overlay",
+            help="Voice Search",
+            type="secondary"
+        )
+        
+        # Add custom SVG microphone icon via HTML
+        st.markdown("""
+        <div class="mic-overlay" onclick="document.querySelector('[data-testid=\\"stButton\\"] button').click()">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show voice recorder when mic is clicked
+        if mic_clicked or st.session_state.get('show_voice_recorder', False):
+            st.session_state.show_voice_recorder = True
+            with st.expander("🗣️ Recording...", expanded=True):
+                audio_val = st.audio_input("Speak your question")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✓ Done", type="primary"):
+                        st.session_state.show_voice_recorder = False
+                        st.rerun()
+                with col2:
+                    if st.button("✗ Cancel"):
+                        st.session_state.show_voice_recorder = False
+                        st.rerun()
+        else:
+            audio_val = None
+        
+        # Text Input
+        query = st.chat_input(f"Ask about {sel}...")
+        
+        # Handle Audio Query
+        if audio_val:
+            with st.spinner("🎧 Transcribing & Translating..."):
+                try:
+                    # Save temp audio
+                    temp_filename = "temp_voice_query.wav"
+                    with open(temp_filename, "wb") as f:
+                        f.write(audio_val.read())
+                    
+                    # Transcribe
+                    transcribed_text = transcribe_audio(temp_filename)
+                    
+                    # Safely remove file
+                    if os.path.exists(temp_filename):
+                        try:
+                            os.remove(temp_filename)
+                        except Exception as e:
+                            logging.warning(f"Could not remove temp file: {e}")
+                            pass
+                    
+                    if transcribed_text:
+                        query = transcribed_text  # Set query to transcribed text
+                except Exception as e:
+                    st.error(f"Error processing audio: {str(e)}")
+        
+        if query:
+            # Normalize if it looks like Romanized text (optional but good for mixed language)
+            # We can run a quick check or just trust Whisper's translation for voice.
+            # For text input, we might want to normalize.
+            
+            # If it was text input (not voice), maybe normalize?
+            # Let's simple check: if non-ascii or Romanized, normalize.
+            # For now, let's keep it simple and rely on backend to handle if needed
+            # or we can explicitly call normalize_query(query) if we suspect it's mixed.
+            
             st.session_state.messages.append({"role": "user", "content": query})
             
             with st.chat_message("user"):

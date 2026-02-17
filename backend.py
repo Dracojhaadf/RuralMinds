@@ -52,7 +52,10 @@ except LookupError:
 from functools import lru_cache
 
 _chroma_client = None
+_chroma_client = None
 _paperqa_docs = None
+_whisper_model = None
+import whisper
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
@@ -182,6 +185,66 @@ Answer:"""
     except Exception as e:
         logger.error(f"Error in confidence check: {str(e)}")
         return None, True  # On error, use RAG to be safe
+
+
+# --- VOICE & TRANSLATION LAYER ---
+
+def get_whisper_model():
+    """Lazy load Whisper model."""
+    global _whisper_model
+    if _whisper_model is None:
+        logger.info("loading Whisper model (base)...")
+        _whisper_model = whisper.load_model("base")
+    return _whisper_model
+
+def transcribe_audio(audio_path: str) -> str:
+    """
+    Transcribe audio using Whisper.
+    Automatically translates to English if source is not English.
+    """
+    try:
+        model = get_whisper_model()
+        
+        # Transcribe (and translate to English)
+        result = model.transcribe(audio_path, task="translate")
+        text = result.get("text", "").strip()
+        
+        logger.info(f"🎤 Transcription: {text}")
+        return text
+    
+    except Exception as e:
+        logger.error(f"Error in transcription: {str(e)}")
+        return ""
+
+def normalize_query(query: str) -> str:
+    """
+    Normalize query to English using LLM if needed.
+    Handles Romanized Hindi/Malayalam or mixed text.
+    """
+    # Simple heuristic: If it looks like English/Code, return as is.
+    # Otherwise, ask LLM to translate/normalize.
+    
+    try:
+        # Prompt to normalize
+        prompt = f"""Task: Translate/Normalize the following text to standard English.
+If it is already English, output it exactly as is.
+If it is Romanized Hindi/Malayalam, translate it to English.
+
+Text: "{query}"
+
+English Translation:"""
+        
+        normalized = query_ollama_simple(prompt, max_tokens=200)
+        
+        if normalized:
+            clean = normalized.strip().strip('"')
+            logger.info(f"🔄 Normalized: '{query}' -> '{clean}'")
+            return clean
+        
+        return query
+    except Exception as e:
+        logger.warning(f"Normalization failed: {str(e)}")
+        return query
 
 
 
