@@ -566,9 +566,14 @@ Rules:
 6. Never explain what language the user used.
 7. Do not add extra commentary.
 8. Keep answers concise and correct.
-
+9. If you dont understand some words dont go asking on it as bracket
+10. me farak means difference between
+11. kya hai means what do you mean by that topic
+12. enthanu also means what do you mean by that by that topic  
+13. Always check if the language is in malayalam or hindi and same with words
+14.User will never ask you anything in tamil if you think its tamil then the language is malayalam
 If the user asks in mixed language (e.g., Malayalam/Hindi written in English),
-interpret the meaning and answer normally in English.
+interpret the meaning and reply in that language.
 """
 
 
