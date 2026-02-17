@@ -618,86 +618,65 @@ with tab1:
                 with st.chat_message(msg["role"]):
                     st.write(msg["content"])
         
-        # Unified Input Bar - Voice + Text
-        st.markdown("""
-        <style>
-        /* Style for unified input container */
-        div[data-testid="column"] {
-            padding: 0 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # Create columns for voice button and text input
-        col_voice, col_text = st.columns([0.08, 0.92])
+        # === UNIFIED INPUT BAR ===
+        # Create columns for voice selector, audio input, and text input
+        # Note: st.audio_input takes width, so we need careful column layout
+        col_voice, col_text = st.columns([0.2, 0.8])
         
         with col_voice:
-            # Voice button
-            if st.button("🎤", key="voice_btn", help="Voice Search"):
-                st.session_state.show_voice_recorder = True
-        
-        # Show voice recorder in a modal-like expander when button is clicked
-        if st.session_state.get('show_voice_recorder', False):
-            with st.expander("🗣️ Recording...", expanded=True):
-                # Language selector
-                voice_lang = st.selectbox(
-                    "🌍 Voice Language",
-                    ["English", "Hindi", "Malayalam"],
-                    key="voice_lang_selector"
-                )
-                
-                audio_val = st.audio_input("Speak your question")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("✓ Submit", type="primary"):
-                        st.session_state.voice_lang = voice_lang
-                        st.session_state.show_voice_recorder = False
-                        st.rerun()
-                with col2:
-                    if st.button("✗ Cancel"):
-                        st.session_state.show_voice_recorder = False
-                        st.session_state.voice_lang = None
-                        st.rerun()
-        else:
-            audio_val = None
-        
+            voice_lang = st.selectbox(
+                "Voice Language",
+                ["EN", "HI", "ML"],
+                label_visibility="collapsed",
+                key="voice_lang_selector"
+            )
+            # Audio input (compact)
+            audio_val = st.audio_input("Record", label_visibility="collapsed")
+            
         with col_text:
             # Text Input
-            query = st.chat_input(f"Ask about {sel}...")
+            text_query = st.chat_input(f"Ask about {sel}...")
         
-        # Handle Audio Query
-        if audio_val and st.session_state.get('voice_lang'):
-            # Map language to code
-            lang_map = {"English": "en", "Hindi": "hi", "Malayalam": "ml"}
-            selected_lang = st.session_state.voice_lang
-            lang_code = lang_map.get(selected_lang, "en")
+        # ---- Decide final query ----
+        query = None
+        
+        # If user typed
+        if text_query:
+            query = text_query
             
-            with st.spinner(f"🎧 Transcribing {selected_lang}..."):
-                try:
-                    # Save temp audio
-                    temp_filename = "temp_voice_query.wav"
-                    with open(temp_filename, "wb") as f:
-                        f.write(audio_val.read())
+        # If user recorded voice
+        elif audio_val:
+            lang_map = {"EN": "en", "HI": "hi", "ML": "ml"}
+            lang_code = lang_map.get(voice_lang, "en")
+            
+            with st.spinner("🎧 Transcribing..."):
+                temp_filename = "temp_voice_query.wav"
+                with open(temp_filename, "wb") as f:
+                    f.write(audio_val.read())
+                
+                # Transcribe (returns tuple: success, msg, data)
+                success, msg, data = transcribe_audio(temp_filename, lang_code)
+                
+                # Safely remove file
+                if os.path.exists(temp_filename):
+                    try:
+                        os.remove(temp_filename)
+                    except Exception as e:
+                        pass
+                
+                if not success:
+                    st.error(f"❌ {msg}")
+                    query = None
+                else:
+                    transcribed_text = data.get("text", "").strip()
                     
-                    # Transcribe with language code
-                    transcribed_text = transcribe_audio(temp_filename, lang_code)
+                    # Translate to English BEFORE sending to LLM/RAG
+                    if lang_code != "en" and transcribed_text:
+                        with st.spinner("🌍 Translating..."):
+                            from backend import translate_to_english
+                            transcribed_text = translate_to_english(transcribed_text, lang_code)
                     
-                    # Safely remove file
-                    if os.path.exists(temp_filename):
-                        try:
-                            os.remove(temp_filename)
-                        except Exception as e:
-                            logging.warning(f"Could not remove temp file: {e}")
-                            pass
-                    
-                    if transcribed_text:
-                        query = transcribed_text  # Set query to transcribed text
-                        # Clear voice lang after use
-                        st.session_state.voice_lang = None
-                except Exception as e:
-                    st.error(f"Error processing audio: {str(e)}")
-                    st.session_state.voice_lang = None
+                    query = transcribed_text
         
         if query:
             # Normalize if it looks like Romanized text (optional but good for mixed language)

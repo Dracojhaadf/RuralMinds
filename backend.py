@@ -187,54 +187,116 @@ Answer:"""
 
 # --- VOICE & TRANSLATION LAYER ---
 
-def get_asr_model():
-    """Lazy load faster-whisper model for multilingual speech recognition."""
-    global _mms_model
-    if _mms_model is None:
-        logger.info("🎤 Loading faster-whisper large-v3 (int8)...")
-        from faster_whisper import WhisperModel
-        _mms_model = WhisperModel(
-            "large-v3",
-            device="cpu",
-            compute_type="int8"  # Optimized for 16GB RAM
-        )
-        logger.info("✓ Faster-whisper model loaded successfully")
-    return _mms_model
+# --- VOICE & TRANSLATION LAYER ---
 
-def transcribe_audio(audio_path: str, language_code: str = "en") -> str:
+# ASR Models Cache
+_whisper_model = None         # English (Whisper)
+_hindi_asr_model = None       # Hindi (AI4Bharat)
+_malayalam_asr_model = None   # Malayalam (Vakyansh)
+
+def get_whisper_model():
+    """Lazy load Whisper (small) model for English."""
+    global _whisper_model
+    if _whisper_model is None:
+        logger.info("🎤 Loading Whisper (small) for English...")
+        import whisper
+        _whisper_model = whisper.load_model("small")
+        logger.info("✓ Whisper model loaded successfully")
+    return _whisper_model
+
+def get_hindi_asr_model():
+    """Lazy load AI4Bharat Hindi ASR model."""
+    global _hindi_asr_model
+    if _hindi_asr_model is None:
+        logger.info("🎤 Loading AI4Bharat Hindi ASR...")
+        from transformers import pipeline
+        _hindi_asr_model = pipeline(
+            "automatic-speech-recognition",
+            model="ai4bharat/indicwav2vec-hindi",
+            device="cpu"
+        )
+        logger.info("✓ Hindi ASR model loaded successfully")
+    return _hindi_asr_model
+
+def get_malayalam_asr_model():
+    """Lazy load Vakyansh Malayalam ASR model."""
+    global _malayalam_asr_model
+    if _malayalam_asr_model is None:
+        logger.info("🎤 Loading Vakyansh Malayalam ASR...")
+        from transformers import pipeline
+        _malayalam_asr_model = pipeline(
+            "automatic-speech-recognition",
+            model="Harveenchadha/vakyansh-wav2vec2-malayalam-mlm-100",
+            device="cpu"
+        )
+        logger.info("✓ Malayalam ASR model loaded successfully")
+    return _malayalam_asr_model
+
+def transcribe_english(audio_path: str) -> str:
+    """Transcribe English audio using Whisper."""
+    model = get_whisper_model()
+    result = model.transcribe(audio_path, language="en")
+    return result.get("text", "").strip()
+
+def transcribe_hindi(audio_path: str) -> str:
+    """Transcribe Hindi audio using AI4Bharat model."""
+    model = get_hindi_asr_model()
+    # Hugging Face pipeline returns [{'text': '...'}] or {'text': '...'}
+    result = model(audio_path)
+    if isinstance(result, list):
+        return result[0].get("text", "").strip()
+    return result.get("text", "").strip()
+
+def transcribe_malayalam(audio_path: str) -> str:
+    """Transcribe Malayalam audio using Vakyansh model."""
+    model = get_malayalam_asr_model()
+    # Hugging Face pipeline returns [{'text': '...'}] or {'text': '...'}
+    result = model(audio_path)
+    if isinstance(result, list):
+        return result[0].get("text", "").strip()
+    return result.get("text", "").strip()
+
+def transcribe_audio(audio_path: str, language_code: str = "en") -> tuple[bool, str, dict]:
     """
-    Transcribe audio using faster-whisper with forced language.
+    Transcribe audio using language-specific ASR models.
     
     Args:
         audio_path: Path to audio file
         language_code: Language code ('en', 'hi', 'ml')
     
     Returns:
-        Transcribed text
+        tuple: (success, message, data)
+        where data is {'text': str} or None
     """
     try:
-        model = get_asr_model()
-        
         logger.info(f"🎤 Transcribing audio in {language_code}...")
         
-        # Transcribe with forced language
-        segments, info = model.transcribe(
-            audio_path,
-            language=language_code,
-            beam_size=1  # Speed optimization
-        )
+        # Route to correct model
+        if language_code == "en":
+            text = transcribe_english(audio_path)
+        elif language_code == "hi":
+            text = transcribe_hindi(audio_path)
+        elif language_code == "ml":
+            text = transcribe_malayalam(audio_path)
+        else:
+            # Fallback to English/Whisper if code unknown
+            logger.warning(f"Unknown language code {language_code}, utilizing Whisper")
+            text = transcribe_english(audio_path)
         
-        # Combine segments into text
-        text = " ".join([seg.text for seg in segments])
-        text = text.strip()
+        # Quality check: Reject empty transcriptions
+        if not text:
+            return False, "Voice not clear. Please try again.", None
+        
+        # Note: avg_logprob check is model-specific and primarily applies to Whisper.
+        # For simplicity in this demo, we trust the model output if non-empty.
         
         logger.info(f"🎤 Transcription: {text}")
         
-        return text
+        return True, "Transcription successful", {"text": text}
     
     except Exception as e:
         logger.error(f"Error in transcription: {str(e)}")
-        return ""
+        return False, f"Transcription failed: {str(e)}", None
 
 def normalize_query(query: str) -> str:
     """
@@ -835,17 +897,19 @@ def query_saved_document_stream(
     3. Check if document-specific (keyword-based)
     4. If general: use LLM directly
     5. If document-specific: use RAG
-    6. Translate response back if needed
+    
+    NOTE: Translation happens BEFORE this function is called (in app.py).
+    This function always receives English queries.
     
     Yields chunks of text. 
     Final yield is a special dictionary with sources: {'sources': [...]}.
     """
     
-    # STEP 1: Language Detection
+    # STEP 1: Language Detection (for text input, not voice)
     original_lang = detect_language(query)
     logger.info(f"🌍 Original language: {original_lang}")
     
-    # STEP 2: Translate to English if needed
+    # STEP 2: Translate to English if needed (for text input)
     english_query = query
     if original_lang != 'en':
         english_query = translate_to_english(query, original_lang)
@@ -865,33 +929,19 @@ def query_saved_document_stream(
             retrieved_chunks = results['documents'][0] if results['documents'] else []
             
             if not retrieved_chunks:
-                response = "No relevant information found for this query."
-                if original_lang != 'en':
-                    response = translate_from_english(response, original_lang)
-                yield response
+                yield "No relevant information found for this query."
                 yield {'sources': []}
                 return
             
-            # Stream the answer generation
-            answer_buffer = ""
+            # Stream the answer generation (always in English)
             for chunk in generate_answer_from_context_stream(retrieved_chunks, english_query):
-                answer_buffer += chunk
                 yield chunk
-            
-            # Translate answer back if needed
-            if original_lang != 'en' and answer_buffer:
-                translated_answer = translate_from_english(answer_buffer, original_lang)
-                # Clear previous output and yield translated version
-                # Note: In streaming, we can't "replace" - so we append translation
-                yield f"\n\n---\n**Translation ({original_lang}):**\n{translated_answer}"
                 
             # Yield sources at the end
             yield {'sources': retrieved_chunks}
             
         except Exception as e:
             error_msg = f"Error during RAG: {str(e)}"
-            if original_lang != 'en':
-                error_msg = translate_from_english(error_msg, original_lang)
             yield error_msg
             yield {'sources': []}
     
@@ -901,29 +951,32 @@ def query_saved_document_stream(
         
         try:
             # Use simple LLM query
-            prompt = f"""You are an AI tutor. Answer the following question clearly and concisely.
+            prompt = f"""You are a Ai Tutor.
+
+Rules:
+0. You can get questions in english,malayalam or hindi.
+1. Answer the question directly and simply.
+2. Do NOT guess the user's intention beyond the question.
+3. Do NOT mention language detection.
+4. Do NOT translate unless explicitly asked.
+5. If the question is informal or partially in another language, interpret it as a simple academic question.
+6. Never explain what language the user used.
+7. Do not add extra commentary.
+8. Keep answers concise and correct.
 
 Question: {english_query}
 
 Answer:"""
             
-            answer_buffer = ""
+            # Stream answer (always in English)
             for chunk in query_ollama_stream_simple(prompt, max_tokens=1000):
-                answer_buffer += chunk
                 yield chunk
-            
-            # Translate answer back if needed
-            if original_lang != 'en' and answer_buffer:
-                translated_answer = translate_from_english(answer_buffer, original_lang)
-                yield f"\n\n---\n**Translation ({original_lang}):**\n{translated_answer}"
             
             # No sources for general queries
             yield {'sources': []}
             
         except Exception as e:
             error_msg = f"Error during LLM query: {str(e)}"
-            if original_lang != 'en':
-                error_msg = translate_from_english(error_msg, original_lang)
             yield error_msg
             yield {'sources': []}
 

@@ -9,8 +9,11 @@ nltk>=3.8.0
 # PDF processing
 PyMuPDF>=1.23.0
 
-# Audio transcription (faster-whisper for better accuracy)
-faster-whisper>=1.0.0
+# Audio transcription
+openai-whisper>=20231117  # English
+transformers>=4.30.0      # Hindi/Malayalam (Hugging Face pipeline)
+librosa>=0.10.0          # Audio loading for HF pipeline
+scipy>=1.10.0            # Audio processing
 
 # Language detection and translation
 langdetect>=1.0.9
