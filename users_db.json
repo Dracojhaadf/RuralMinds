@@ -16,5 +16,11 @@
     "role": "teacher",
     "name": "Mikhail John Shiju",
     "email": "mikhailjs.csb2428@saintgits.org"
+  },
+  "Johann": {
+    "password": "00a73acef9d3c1a812098a4295ecd7ed593774dc482cdfd33425fdf815328791",
+    "role": "student",
+    "name": "Zackeria mathew",
+    "email": "joel.csb2428@saintgits.org"
   }
 }
