@@ -1,16 +1,54 @@
 import hashlib
 import logging
 from typing import Optional, Tuple
-from database import get_db_connection, ensure_migrated
+from core.database import get_db_connection, ensure_migrated
 
 logger = logging.getLogger(__name__)
 
 # Ensure migrations on module load just in case (safe due to IF NOT EXISTS and .bak)
 ensure_migrated()
 
+# --- PASSWORD HASHING (bcrypt with SHA-256 fallback for legacy accounts) ---
+
+try:
+    import bcrypt
+    _BCRYPT_AVAILABLE = True
+except ImportError:
+    _BCRYPT_AVAILABLE = False
+    logger.warning("bcrypt not installed — falling back to SHA-256 (INSECURE). Install: pip install bcrypt")
+
+
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256."""
+    """Hash a password using bcrypt (preferred) or SHA-256 (fallback)."""
+    if _BCRYPT_AVAILABLE:
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
+    # Fallback: unsalted SHA-256 (NOT recommended for production)
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored hash. Handles both bcrypt and legacy SHA-256."""
+    if _BCRYPT_AVAILABLE and stored_hash.startswith('$2b$'):
+        # bcrypt hash
+        return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+    # Legacy SHA-256 hash (64 hex chars)
+    return hashlib.sha256(password.encode()).hexdigest() == stored_hash
+
+
+def _upgrade_hash_if_needed(username: str, password: str, stored_hash: str):
+    """Auto-upgrade legacy SHA-256 hash to bcrypt on successful login."""
+    if _BCRYPT_AVAILABLE and not stored_hash.startswith('$2b$'):
+        new_hash = hash_password(password)
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute('UPDATE users SET password = ? WHERE username = ?', (new_hash, username))
+            conn.commit()
+            conn.close()
+            logger.info(f"Upgraded password hash for user '{username}' from SHA-256 to bcrypt")
+        except Exception as e:
+            logger.warning(f"Failed to upgrade password hash for '{username}': {e}")
+
 
 def _ensure_admin():
     """Ensure the default administrator exists in the SQLite database."""
@@ -21,7 +59,7 @@ def _ensure_admin():
         c.execute('''
             INSERT INTO users (username, password, role, name, email) 
             VALUES (?, ?, ?, ?, ?)
-        ''', ('admin', hash_password("administrator"), 'admin', 'Administrator', 'admin@edubridge.local'))
+        ''', ('admin', hash_password("administrator"), 'admin', 'Administrator', 'admin@ruralminds.local'))
         conn.commit()
     conn.close()
 
@@ -68,7 +106,7 @@ def create_user(username: str, password: str, role: str, name: str, email: str) 
 
 def authenticate_user(username: str, password: str) -> Tuple[bool, Optional[dict]]:
     """
-    Authenticate a user via SQLite.
+    Authenticate a user via SQLite. Auto-upgrades legacy SHA-256 hashes to bcrypt.
     """
     conn = get_db_connection()
     c = conn.cursor()
@@ -81,9 +119,9 @@ def authenticate_user(username: str, password: str) -> Tuple[bool, Optional[dict
         logger.warning(f"Login attempt with non-existent username: {username}")
         return False, None
     
-    hashed_input = hash_password(password)
-    
-    if user['password'] == hashed_input:
+    if _verify_password(password, user['password']):
+        # Auto-upgrade legacy hash
+        _upgrade_hash_if_needed(username, password, user['password'])
         logger.info(f"Successful login: {username} ({user['role']})")
         return True, {
             'username': user['username'],
@@ -119,7 +157,7 @@ def change_password(username: str, old_password: str, new_password: str) -> Tupl
         conn.close()
         return False, "User not found."
     
-    if user['password'] != hash_password(old_password):
+    if not _verify_password(old_password, user['password']):
         conn.close()
         return False, "Incorrect old password."
     

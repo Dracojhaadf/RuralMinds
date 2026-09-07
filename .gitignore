@@ -1,48 +1,62 @@
-# Models (large binary files)
+# Large Machine Learning Models & Weights
 model/
-
-# Screenshots / media folder
 ss/
+*.safetensors
+*.bin
+*.onnx
 
-# Python
+# Python Bytecode & Environments
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyd
 *.env
 .env
 venv/
 .venv/
+env/
 *.egg-info/
 dist/
 build/
 
-# ChromaDB local vector store
+# IDE & Editor Configurations
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ChromaDB Vector Database
 chroma_db/
 
-# Uploads & Media
+# Uploads, Media & Audio Transients
 uploaded_pdfs/
 captions/
 temp_*.pdf
-static/videos/
+temp_*.wav
+*.wav
+*.mp3
 *.mp4
-*.m4a
+*.avi
+*.mov
 
-# Streamlit
+# Streamlit Local Configs & Secrets
 .streamlit/secrets.toml
 
-# Databases and Backups
+# SQLite Databases & Backups
 *.db
 *.sqlite3
 *.db-journal
 *.bak
 *.json.bak
 
-# App-specific transient files
+# App-specific Transient State Files
 student_interactions.json
 test
 test_system
 
-# OS
+# Operating System Files
 .DS_Store
 Thumbs.db
+desktop.ini

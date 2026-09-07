@@ -27,6 +27,8 @@ sentencepiece>=0.1.99
 # Additional utilities
 numpy>=1.24.0
 pathlib>=1.0.1
+bcrypt>=4.0.0
+rank-bm25>=0.2.2
 
 # Optional: For better performance
 accelerate>=0.20.0

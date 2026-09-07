@@ -1,12 +1,11 @@
 """
-Simple test script for streaming functionality
+Simple test script for streaming functionality.
 """
 import json
 
 def test_streaming_logic():
     """Test the streaming logic without full backend dependencies"""
     
-    # Simulate streaming response from Ollama
     mock_ollama_response = [
         '{"response": "The"}',
         '{"response": " answer"}',
@@ -58,7 +57,6 @@ def test_streaming_logic():
     
     print("\n" + "="*50)
     print("[SUCCESS] All streaming tests passed!")
-    print("="*50)
 
 if __name__ == "__main__":
     test_streaming_logic()
